@@ -2,40 +2,45 @@
  * @NOTE: Prepend a `~` to css file paths that are in your node_modules
  *        See https://github.com/webpack-contrib/sass-loader#imports
  */
-body {
-  position: relative;
-  color: white;
-  height: 100vh;
-  background: linear-gradient(
-    200.96deg,
-    #fedc2a -29.09%,
-    #dd5789 51.77%,
-    #7a2c9e 129.35%
-  );
+html, body, #root {
+  height: 100%;
+  margin: 0;
+  background: #121212;
+  color: #ffffff;
   font-family: sans-serif;
-  overflow-y: hidden;
+  overflow: hidden;
+}
+
+body {
   display: flex;
-  justify-content: center;
-  align-items: center;
+  flex-direction: column;
+}
+
+nav {
+  background: #1e1e1e;
+}
+
+aside {
+  background: #1b1b1b;
+  color: #fff;
+}
+
+main, section {
+  background: #121212;
+  color: #fff;
 }
 
 button {
-  background-color: white;
-  padding: 10px 20px;
-  border-radius: 10px;
+  background-color: #333;
+  color: #fff;
+  padding: 8px 16px;
+  border-radius: 6px;
   border: none;
-  appearance: none;
-  font-size: 1.3rem;
-  box-shadow: 0px 8px 28px -6px rgba(24, 39, 75, 0.12),
-    0px 18px 88px -4px rgba(24, 39, 75, 0.14);
-  transition: all ease-in 0.1s;
   cursor: pointer;
-  opacity: 0.9;
 }
 
 button:hover {
-  transform: scale(1.05);
-  opacity: 1;
+  background-color: #444;
 }
 
 li {
@@ -59,4 +64,49 @@ a:hover {
   justify-content: center;
   align-items: center;
   margin: 20px 0;
+}
+
+/* Editor styles */
+.editor {
+  flex: 1;
+  padding: 20px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  background: #121212;
+}
+
+.editor-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: center;
+}
+
+.editor-input,
+.editor-select {
+  background: #1e1e1e;
+  color: #ffffff;
+  padding: 8px;
+  border: 1px solid #444;
+  border-radius: 6px;
+  flex: 1 0 150px;
+}
+
+.editor-button {
+  background-color: #3a3a3a;
+  color: #fff;
+  padding: 8px 16px;
+  border-radius: 6px;
+  border: none;
+  cursor: pointer;
+}
+
+.editor-button:hover {
+  background-color: #555;
+}
+
+.editor-section-title {
+  margin: 0 0 4px;
 }

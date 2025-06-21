@@ -1,0 +1,67 @@
+
+~~~ 1. 카드 타입 테이블
+CREATE TABLE IF NOT EXISTS card_types (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT UNIQUE NOT NULL,
+    description TEXT
+);
+
+-- 2. 관계 타입 테이블
+CREATE TABLE IF NOT EXISTS relation_types (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT UNIQUE NOT NULL,
+    description TEXT,
+    opposite_id INTEGER,
+    FOREIGN KEY (opposite_id) REFERENCES relation_types(id) ON DELETE CASCADE
+);
+
+-- 3. 프로젝트 테이블
+CREATE TABLE IF NOT EXISTS projects (
+    id TEXT PRIMARY KEY,  -- UUID
+    name TEXT UNIQUE NOT NULL
+);
+
+-- 4. 카드 테이블
+CREATE TABLE IF NOT EXISTS cards (
+    id TEXT PRIMARY KEY,              -- UUID
+    project_id TEXT NOT NULL,
+    title TEXT NOT NULL,
+    content TEXT,
+    cardtype TEXT,
+    complete INTEGER DEFAULT 0,
+    activate INTEGER DEFAULT 0,
+    duration INTEGER,
+    es TEXT,
+    ls TEXT,
+    startdate TEXT,
+    enddate TEXT,
+    price INTEGER,
+    createdat TEXT,
+    card_type_id INTEGER,
+    FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE,
+    FOREIGN KEY (card_type_id) REFERENCES card_types(id) ON DELETE SET NULL
+);
+
+-- 5. 관계 테이블
+CREATE TABLE IF NOT EXISTS relations (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    from_card_id TEXT NOT NULL,
+    to_card_id TEXT NOT NULL,
+    relation_type_id INTEGER,  -- NULL이면 단순 연결
+    set_id INTEGER,
+    FOREIGN KEY (from_card_id) REFERENCES cards(id) ON DELETE CASCADE,
+    FOREIGN KEY (to_card_id) REFERENCES cards(id) ON DELETE CASCADE,
+    FOREIGN KEY (relation_type_id) REFERENCES relation_types(id) ON DELETE SET NULL
+);
+-- 6. 캘린더 배정을 위한 존재하는 반복들.
+CREATE TABLE repeatations (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    card_id TEXT,              -- ✔ 하나의 카드가 여러 규칙을 가질 수 있음
+    freq TEXT,
+    interval INTEGER,
+    byday TEXT,
+    bymonthday INTEGER,
+    until TEXT,
+    FOREIGN KEY (card_id) REFERENCES cards(id) ON DELETE CASCADE
+);
+~~~
