@@ -172,6 +172,8 @@ function Home() {
   const [showTitleModal, setShowTitleModal] = useState(false);
   const [modalCardId, setModalCardId] = useState('');
   const [modalNewTitle, setModalNewTitle] = useState('');
+  const [projects,setProjects]=useState<{project_id:string; project_name:string}[]>([]);
+  const [cardDetail,setCardDetail]=useState<any|null>(null);
 
   const loadCards = async () => {
     const res = (await window.electron.ipcRenderer.invoke('get-cards')) as any;
@@ -201,6 +203,8 @@ function Home() {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const rt = (await window.electron.ipcRenderer.invoke('get-relationtypes')) as any;
       if (rt.success) setRelationTypes(rt.data);
+      const pj = (await window.electron.ipcRenderer.invoke('get-projects')) as any;
+      if(pj.success) setProjects(pj.data);
     })();
   }, []);
 
@@ -209,9 +213,11 @@ function Home() {
     if(card){
       setCurrentCardId(card.id);
       loadRelations(card.id);
+      loadCardDetail(card.id);
     } else {
       setCurrentCardId('');
       setRelations([]);
+      setCardDetail(null);
     }
   },[cardTitleInput,cards]);
 
@@ -354,6 +360,27 @@ function Home() {
         await loadRelations(sourceId);
         showToast('관계 생성 완료');
       }
+    }
+  };
+
+  // 카드 상세 정보 로드
+  const loadCardDetail = async(id:string)=>{
+    if(!id) {setCardDetail(null); return;}
+    const res = await window.electron.ipcRenderer.invoke('get-card-detail',id) as any;
+    if(res.success) setCardDetail(res.data);
+  };
+
+  // generic field update handler
+  const updateCardField = async(field:string,value:any)=>{
+    if(!currentCardId) return;
+    setCardDetail((prev:any)=>({...prev,[field]:value}));
+    await window.electron.ipcRenderer.invoke('update-card-field',{card_id:currentCardId,field,value});
+    if(field==='title'){
+      setCardTitleInput(value);
+      await loadCards();
+    }
+    if(field==='cardtype'){
+      await loadCards();
     }
   };
 
@@ -507,20 +534,78 @@ function Home() {
       {/* 우측 카드 세부사항 */}
       <aside style={{ width: 300, borderLeft: '1px solid #ccc', overflowY: 'auto', padding: 20 }}>
         <h3>카드 세부사항</h3>
-        {currentCardId ? (
-          <div>
-            <p><strong>ID:</strong> {currentCardId}</p>
-            <p>
-              <strong>제목:</strong>{' '}
-              {cards.find((c) => c.id === currentCardId)?.title ?? ''}
-            </p>
-            <hr />
-            {/* 관계 목록은 중앙 편집기로 이동 */}
-            <hr />
+        {cardDetail ? (
+          <div style={{display:'flex',flexDirection:'column',gap:8}}>
+            <div><strong>ID:</strong> {cardDetail.id}</div>
+            <label style={{display:'flex',flexDirection:'column',gap:4}}>
+              제목
+              <input value={cardDetail.title} onChange={(e)=>updateCardField('title',e.target.value)} />
+            </label>
+
+            <label style={{display:'flex',flexDirection:'column',gap:4}}>
+              내용
+              <textarea value={cardDetail.content||''} onChange={(e)=>updateCardField('content',e.target.value)} rows={4} />
+            </label>
+
+            <label style={{display:'flex',flexDirection:'column',gap:4}}>
+              카드타입
+              <select value={cardDetail.cardtype||''} onChange={(e)=>updateCardField('cardtype',e.target.value)}>
+                <option value="">(없음)</option>
+                {cardTypes.map(ct=>(<option key={ct.cardtype_id} value={ct.cardtype_id}>{ct.cardtype_name}</option>))}
+              </select>
+            </label>
+
+            <label style={{display:'flex',alignItems:'center',gap:4}}>
+              완료
+              <input type="checkbox" checked={Boolean(cardDetail.complete)} onChange={(e)=>updateCardField('complete',e.target.checked?1:0)} />
+            </label>
+
+            <label style={{display:'flex',alignItems:'center',gap:4}}>
+              활성화
+              <input type="checkbox" checked={Boolean(cardDetail.activate)} onChange={(e)=>updateCardField('activate',e.target.checked?1:0)} />
+            </label>
+
+            <label style={{display:'flex',flexDirection:'column',gap:4}}>
+              기간
+              <input type="number" value={cardDetail.duration||''} onChange={(e)=>updateCardField('duration',e.target.value?Number(e.target.value):null)} />
+            </label>
+
+            <label style={{display:'flex',flexDirection:'column',gap:4}}>
+              ES
+              <input value={cardDetail.es||''} onChange={(e)=>updateCardField('es',e.target.value)} />
+            </label>
+
+            <label style={{display:'flex',flexDirection:'column',gap:4}}>
+              LS
+              <input value={cardDetail.ls||''} onChange={(e)=>updateCardField('ls',e.target.value)} />
+            </label>
+
+            <label style={{display:'flex',flexDirection:'column',gap:4}}>
+              시작일
+              <input type="date" value={cardDetail.startdate?.slice(0,10)||''} onChange={(e)=>updateCardField('startdate',e.target.value)} />
+            </label>
+
+            <label style={{display:'flex',flexDirection:'column',gap:4}}>
+              종료일
+              <input type="date" value={cardDetail.enddate?.slice(0,10)||''} onChange={(e)=>updateCardField('enddate',e.target.value)} />
+            </label>
+
+            <label style={{display:'flex',flexDirection:'column',gap:4}}>
+              가격
+              <input type="number" value={cardDetail.price||''} onChange={(e)=>updateCardField('price',e.target.value?Number(e.target.value):null)} />
+            </label>
+
+            <label style={{display:'flex',flexDirection:'column',gap:4}}>
+              프로젝트
+              <select value={cardDetail.project_id||''} onChange={(e)=>updateCardField('project_id',e.target.value||null)}>
+                <option value="">(없음)</option>
+                {projects.map(p=>(<option key={p.project_id} value={p.project_id}>{p.project_name}</option>))}
+              </select>
+            </label>
+
+            <div><strong>생성일:</strong> {cardDetail.createdat}</div>
           </div>
-        ) : (
-          <p>카드를 선택하세요.</p>
-        )}
+        ):<p>카드를 선택하세요.</p>}
       </aside>
 
       {/* 토스트 */}

@@ -442,6 +442,46 @@ ipcMain.handle('get-relations', async () => {
   }
 });
 
+// 카드 상세 조회
+ipcMain.handle('get-card-detail', async (_, cardId: string) => {
+  try {
+    const row = db.prepare('SELECT * FROM CARDS WHERE id = ?').get(cardId);
+    return { success: true, data: row };
+  } catch (error) {
+    log.error('Failed to get card detail:', error);
+    return { success: false, error: 'Failed to get card detail' };
+  }
+});
+
+// 카드 필드 단일 업데이트
+ipcMain.handle('update-card-field', async (_, payload: { card_id: string; field: string; value: unknown }) => {
+  try {
+    const allowed = [
+      'project_id',
+      'title',
+      'content',
+      'cardtype',
+      'complete',
+      'activate',
+      'duration',
+      'es',
+      'ls',
+      'startdate',
+      'enddate',
+      'price',
+    ];
+    if (!allowed.includes(payload.field)) {
+      return { success: false, error: 'field-not-allowed' };
+    }
+    const stmt = db.prepare(`UPDATE CARDS SET ${payload.field} = ? WHERE id = ?`);
+    stmt.run(payload.value, payload.card_id);
+    return { success: true };
+  } catch (error) {
+    log.error('Failed to update card field:', error);
+    return { success: false, error: 'Failed to update card field' };
+  }
+});
+
 if (process.env.NODE_ENV === 'production') {
   const sourceMapSupport = require('source-map-support');
   sourceMapSupport.install();
