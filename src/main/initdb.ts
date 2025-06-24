@@ -19,6 +19,16 @@ db.exec(`
   )
 `);
 
+// 기본 카드타입 데이터 삽입
+db.exec(`
+  INSERT OR IGNORE INTO CARDTYPES (cardtype_id, cardtype_name, createdat) VALUES
+    ('entity', 'entity', datetime('now')),
+    ('habit', 'habit', datetime('now')),
+    ('action', 'action', datetime('now')),
+    ('destination', 'destination', datetime('now')),
+    ('if', 'IF', datetime('now'))
+`);
+
 // 프로젝트 테이블 생성
 db.exec(`
   CREATE TABLE IF NOT EXISTS PROJECTS (
@@ -56,7 +66,8 @@ db.exec(`
     relationtype_id INTEGER PRIMARY KEY AUTOINCREMENT,
     typename TEXT NOT NULL,
     oppsite TEXT NOT NULL,
-    createdat TEXT
+    createdat TEXT,
+    set_value TEXT
   )
 `);
 

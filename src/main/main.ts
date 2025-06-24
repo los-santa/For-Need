@@ -85,15 +85,31 @@ ipcMain.handle('create-relation', async (_, data: RelationInput) => {
   try {
     const now = new Date().toISOString();
 
-    db.prepare(
-      `INSERT INTO RELATION (relationtype_id, source, target, project_id, createdat) VALUES (?, ?, ?, ?, ?)`,
-    ).run(
-      data.relationtype_id,
-      data.source,
-      data.target,
-      data.project_id ?? '',
-      now,
-    );
+    const insert = db.prepare(`INSERT INTO RELATION (relationtype_id, source, target, project_id, createdat) VALUES (?, ?, ?, ?, ?)`);
+
+    // 중복 여부 확인 함수
+    const existsStmt = db.prepare(`SELECT 1 FROM RELATION WHERE relationtype_id = ? AND source = ? AND target = ?`);
+
+    const transact = db.transaction(() => {
+      if (!existsStmt.get(data.relationtype_id, data.source, data.target)) {
+        insert.run(data.relationtype_id, data.source, data.target, data.project_id ?? '', now);
+      }
+
+      // 반대 relationtype_id 찾기
+      const rtRow = db.prepare('SELECT oppsite FROM RELATIONTYPE WHERE relationtype_id = ?').get(data.relationtype_id) as any;
+      if (rtRow) {
+        const oppName = rtRow.oppsite;
+        const oppRow = db.prepare('SELECT relationtype_id FROM RELATIONTYPE WHERE typename = ?').get(oppName) as any;
+        if (oppRow) {
+          const oppId = oppRow.relationtype_id;
+          if (!existsStmt.get(oppId, data.target, data.source)) {
+            insert.run(oppId, data.target, data.source, data.project_id ?? '', now);
+          }
+        }
+      }
+    });
+
+    transact();
 
     return { success: true };
   } catch (error) {
@@ -171,7 +187,7 @@ ipcMain.handle('get-relations-by-source', async (_, sourceId: string) => {
 // cardtypes & relationtypes list
 ipcMain.handle('get-cardtypes', async () => {
   try {
-    const rows = db.prepare('SELECT cardtype_id, cardtype_name FROM CARDTYPES').all();
+    const rows = db.prepare('SELECT cardtype_id, cardtype_name, createdat FROM CARDTYPES').all();
     return { success: true, data: rows };
   } catch (error) {
     log.error('Failed to get cardtypes:', error);
@@ -181,7 +197,7 @@ ipcMain.handle('get-cardtypes', async () => {
 
 ipcMain.handle('get-relationtypes', async () => {
   try {
-    const rows = db.prepare('SELECT relationtype_id, typename FROM RELATIONTYPE').all();
+    const rows = db.prepare('SELECT relationtype_id, typename, oppsite, set_value, createdat FROM RELATIONTYPE').all();
     return { success: true, data: rows };
   } catch (error) {
     log.error('Failed to get relationtypes:', error);
@@ -244,22 +260,185 @@ ipcMain.handle('create-cardtype', async (_, payload: { name: string }) => {
 ipcMain.handle('create-relationtype', async (_, payload: { typename: string; oppsite: string }) => {
   try {
     const now = new Date().toISOString();
-    const result = db.prepare('INSERT INTO RELATIONTYPE (typename, oppsite, createdat) VALUES (?, ?, ?)')
-      .run(payload.typename.trim(), payload.oppsite.trim(), now);
-    const id = Number(result.lastInsertRowid);
-    return { success: true, data: { id } };
-  } catch (error) {
-    // 이미 존재할 경우 id 반환
-    try {
-      const row = db.prepare('SELECT relationtype_id FROM RELATIONTYPE WHERE typename = ?').get(payload.typename.trim());
-      if (row) {
-        return { success: true, data: { id: (row as any).relationtype_id } };
-      }
-    } catch (innerErr) {
-      log.error('Failed to fetch existing relationtype:', innerErr);
+    const typename = payload.typename.trim();
+    const opposite = payload.oppsite.trim();
+    if(!opposite){
+      return { success:false, error:'empty-opposite' };
     }
+
+    // 1) 메인 타입 삽입
+    let mainId: number;
+    try {
+      const res = db.prepare('INSERT INTO RELATIONTYPE (typename, oppsite, createdat) VALUES (?, ?, ?)')
+        .run(typename, opposite, now);
+      mainId = Number(res.lastInsertRowid);
+    } catch (err) {
+      // 이미 존재하면 해당 ID 획득
+      const row = db.prepare('SELECT relationtype_id, oppsite FROM RELATIONTYPE WHERE typename = ?').get(typename) as any;
+      mainId = row.relationtype_id;
+    }
+
+    // 2) 반대 타입 존재 여부 확인 후 없으면 삽입
+    let oppId: number;
+    const oppRow = db.prepare('SELECT relationtype_id FROM RELATIONTYPE WHERE typename = ?').get(opposite) as any;
+    if (oppRow) {
+      oppId = oppRow.relationtype_id;
+      // oppRow 가 있을 때 oppsite 값이 올바른지 확인
+      db.prepare('UPDATE RELATIONTYPE SET oppsite = ? WHERE relationtype_id = ?').run(typename, oppId);
+    } else {
+      const res = db.prepare('INSERT INTO RELATIONTYPE (typename, oppsite, createdat) VALUES (?, ?, ?)')
+        .run(opposite, typename, now);
+      oppId = Number(res.lastInsertRowid);
+    }
+
+    // 3) 메인 타입의 oppsite 값이 정확한지 보정 (중복 삽입으로 인해 catch 에서 가져온 경우 등)
+    db.prepare('UPDATE RELATIONTYPE SET oppsite = ? WHERE relationtype_id = ?').run(opposite, mainId);
+
+    return { success: true, data: { id: mainId } };
+  } catch (error) {
     log.error('Failed to create relationtype:', error);
     return { success: false, error: 'Failed to create relationtype' };
+  }
+});
+
+// ------------------------------------------------------------------
+// Update CardType name
+// ------------------------------------------------------------------
+ipcMain.handle('rename-cardtype', async (_, payload: { cardtype_id: string; name: string }) => {
+  try {
+    db.prepare('UPDATE CARDTYPES SET cardtype_name = ? WHERE cardtype_id = ?').run(payload.name.trim(), payload.cardtype_id);
+    return { success: true };
+  } catch (error) {
+    log.error('Failed to rename cardtype:', error);
+    return { success: false, error: 'Failed to rename cardtype' };
+  }
+});
+
+// ------------------------------------------------------------------
+// Delete CardType
+// ------------------------------------------------------------------
+ipcMain.handle('delete-cardtype', async (_, cardtype_id: string) => {
+  try {
+    db.prepare('DELETE FROM CARDTYPES WHERE cardtype_id = ?').run(cardtype_id);
+    // CARDS.cardtype 는 FK ON DELETE SET NULL 이므로 추가 조치 불필요
+    return { success: true };
+  } catch (error) {
+    log.error('Failed to delete cardtype:', error);
+    return { success: false, error: 'Failed to delete cardtype' };
+  }
+});
+
+// ------------------------------------------------------------------
+// Update RelationType name & opposite
+// ------------------------------------------------------------------
+ipcMain.handle('rename-relationtype', async (_, payload: { relationtype_id: number; typename: string; oppsite: string}) => {
+  try {
+    const newName = payload.typename.trim();
+    const newOpp = payload.oppsite.trim();
+
+    // 1) 기존 typename 가져오기
+    const before = db.prepare('SELECT typename FROM RELATIONTYPE WHERE relationtype_id = ?').get(payload.relationtype_id) as any;
+    const oldName = before?.typename as string;
+
+    // 2) 현재 row 업데이트
+    db.prepare('UPDATE RELATIONTYPE SET typename = ?, oppsite = ? WHERE relationtype_id = ?').run(newName, newOpp, payload.relationtype_id);
+
+    // 3) oppsite 참조하는 상대 row의 oppsite 값 보정
+    if (oldName) {
+      db.prepare('UPDATE RELATIONTYPE SET oppsite = ? WHERE oppsite = ?').run(newName, oldName);
+    }
+
+    // 4) 반대 row의 typename 이 newOpp 와 일치하는지 확인, 없으면 생성
+    const oppRow = db.prepare('SELECT relationtype_id FROM RELATIONTYPE WHERE typename = ?').get(newOpp) as any;
+    if (!oppRow) {
+      db.prepare('INSERT INTO RELATIONTYPE (typename, oppsite, createdat) VALUES (?, ?, ?)').run(newOpp, newName, new Date().toISOString());
+    }
+    else {
+      db.prepare('UPDATE RELATIONTYPE SET oppsite = ? WHERE relationtype_id = ?').run(newName, oppRow.relationtype_id);
+    }
+
+    return { success: true };
+  } catch (error) {
+    log.error('Failed to rename relationtype:', error);
+    return { success: false, error: 'Failed to rename relationtype' };
+  }
+});
+
+// ------------------------------------------------------------------
+// Delete RelationType
+// ------------------------------------------------------------------
+ipcMain.handle('delete-relationtype', async (_, relationtype_id: number) => {
+  try {
+    const row = db.prepare('SELECT typename, oppsite FROM RELATIONTYPE WHERE relationtype_id = ?').get(relationtype_id) as any;
+    if(!row) return { success:false, error:'not-found'};
+    const { typename, oppsite } = row;
+    const tx = db.transaction(() => {
+      db.prepare('DELETE FROM RELATIONTYPE WHERE relationtype_id = ?').run(relationtype_id);
+      db.prepare('DELETE FROM RELATIONTYPE WHERE typename = ?').run(oppsite);
+    });
+    tx();
+    return { success: true };
+  } catch (error) {
+    log.error('Failed to delete relationtype:', error);
+    return { success: false, error: 'Failed to delete relationtype' };
+  }
+});
+
+// ------------------------------------------------------------------
+// Delete Relation
+// ------------------------------------------------------------------
+ipcMain.handle('delete-relation', async (_, relation_id: number) => {
+  try {
+    const row = db.prepare('SELECT relationtype_id, source, target FROM RELATION WHERE relation_id = ?').get(relation_id) as any;
+    if (!row) return { success: false, error: 'not-found' };
+
+    const { relationtype_id, source, target } = row;
+
+    const oppNameRow = db.prepare('SELECT oppsite FROM RELATIONTYPE WHERE relationtype_id = ?').get(relationtype_id) as any;
+    let oppRelId: number | null = null;
+    if (oppNameRow) {
+      const oppTypeRow = db.prepare('SELECT relationtype_id FROM RELATIONTYPE WHERE typename = ?').get(oppNameRow.oppsite) as any;
+      if (oppTypeRow) {
+        oppRelId = oppTypeRow.relationtype_id;
+      }
+    }
+
+    const del = db.prepare('DELETE FROM RELATION WHERE relation_id = ?');
+    const delByProps = db.prepare('DELETE FROM RELATION WHERE relationtype_id = ? AND source = ? AND target = ?');
+
+    const tx = db.transaction(() => {
+      del.run(relation_id);
+      if (oppRelId !== null) {
+        delByProps.run(oppRelId, target, source);
+      }
+    });
+    tx();
+
+    return { success: true };
+  } catch (error) {
+    log.error('Failed to delete relation:', error);
+    return { success: false, error: 'Failed to delete relation' };
+  }
+});
+
+// ------------------------------------------------------------------
+// Get all relations (simple list)
+// ------------------------------------------------------------------
+ipcMain.handle('get-relations', async () => {
+  try {
+    const rows = db.prepare(`
+      SELECT r.relation_id, r.relationtype_id, rt.typename, r.source, sc.title AS source_title,
+             r.target, tc.title AS target_title
+      FROM RELATION r
+      LEFT JOIN RELATIONTYPE rt ON rt.relationtype_id = r.relationtype_id
+      LEFT JOIN CARDS sc ON sc.id = r.source
+      LEFT JOIN CARDS tc ON tc.id = r.target
+      ORDER BY r.relation_id DESC
+    `).all();
+    return { success: true, data: rows };
+  } catch (error) {
+    log.error('Failed to get relations:', error);
+    return { success: false, error: 'Failed to get relations' };
   }
 });
 
@@ -290,8 +469,9 @@ const installExtensions = async () => {
 
 function createWindow() {
   const mainWindow = new BrowserWindow({
-    width: 800,
-    height: 600,
+    width: 1280,
+    height: 720,
+    fullscreen: process.env.NODE_ENV === 'development',
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
     },
@@ -300,9 +480,8 @@ function createWindow() {
   if (process.env.NODE_ENV === 'development') {
     // electron-react-boilerplate renderer dev 서버 (기본 1212)
     mainWindow.loadURL('http://localhost:1212');
-    if (isDebug) {
-      mainWindow.webContents.openDevTools();
-    }
+    // 개발 모드: 전체 화면, DevTools 자동 오픈 금지
+    mainWindow.setFullScreen(true);
   } else {
     // 패키징 또는 프로덕션 빌드 시 dist 폴더의 정적 파일 사용
     mainWindow.loadFile(path.join(__dirname, '../../dist/index.html'));
