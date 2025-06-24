@@ -22,7 +22,7 @@ db.exec(`
 // 기본 카드타입 데이터 삽입 (존재하지 않을 때만)
 const defaultTypes = ['entity','habit','action','destination','IF'];
 defaultTypes.forEach(name=>{
-  db.prepare('INSERT OR IGNORE INTO CARDTYPES (cardtype_name, createdat) VALUES (?, datetime("now"))').run(name);
+  db.prepare("INSERT OR IGNORE INTO CARDTYPES (cardtype_name, createdat) VALUES (?, datetime('now'))").run(name);
 });
 
 // 프로젝트 테이블 생성
