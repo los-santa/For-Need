@@ -206,7 +206,7 @@ ipcMain.handle('get-relationtypes', async () => {
 });
 
 // update card type
-ipcMain.handle('update-cardtype', async (_, payload: { card_id: string; cardtype: string }) => {
+ipcMain.handle('update-cardtype', async (_, payload: { card_id: string; cardtype: number }) => {
   try {
     db.prepare('UPDATE CARDS SET cardtype = ? WHERE id = ?').run(payload.cardtype, payload.card_id);
     return { success: true };
@@ -234,10 +234,10 @@ ipcMain.handle('update-card-title', async (_, payload: { card_id: string; title:
 // ------------------------------------------------------------------
 ipcMain.handle('create-cardtype', async (_, payload: { name: string }) => {
   try {
-    const id = randomUUID();
     const now = new Date().toISOString();
-    db.prepare('INSERT INTO CARDTYPES (cardtype_id, cardtype_name, createdat) VALUES (?, ?, ?)')
-      .run(id, payload.name.trim(), now);
+    const stmt = db.prepare('INSERT INTO CARDTYPES (cardtype_name, createdat) VALUES (?, ?)');
+    const info = stmt.run(payload.name.trim(), now);
+    const id = info.lastInsertRowid as number;
     return { success: true, data: { id } };
   } catch (error) {
     // 카드타입 이름이 이미 존재할 경우 해당 id 반환
@@ -304,7 +304,7 @@ ipcMain.handle('create-relationtype', async (_, payload: { typename: string; opp
 // ------------------------------------------------------------------
 // Update CardType name
 // ------------------------------------------------------------------
-ipcMain.handle('rename-cardtype', async (_, payload: { cardtype_id: string; name: string }) => {
+ipcMain.handle('rename-cardtype', async (_, payload: { cardtype_id: number; name: string }) => {
   try {
     db.prepare('UPDATE CARDTYPES SET cardtype_name = ? WHERE cardtype_id = ?').run(payload.name.trim(), payload.cardtype_id);
     return { success: true };
@@ -317,7 +317,7 @@ ipcMain.handle('rename-cardtype', async (_, payload: { cardtype_id: string; name
 // ------------------------------------------------------------------
 // Delete CardType
 // ------------------------------------------------------------------
-ipcMain.handle('delete-cardtype', async (_, cardtype_id: string) => {
+ipcMain.handle('delete-cardtype', async (_, cardtype_id: number) => {
   try {
     db.prepare('DELETE FROM CARDTYPES WHERE cardtype_id = ?').run(cardtype_id);
     // CARDS.cardtype 는 FK ON DELETE SET NULL 이므로 추가 조치 불필요

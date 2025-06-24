@@ -729,7 +729,7 @@ function CardTypeManage() {
 
   const saveEdit = async () => {
     if (!editingId || !editingValue) return;
-    await window.electron.ipcRenderer.invoke('rename-cardtype', { cardtype_id: editingId, name: editingValue });
+    await window.electron.ipcRenderer.invoke('rename-cardtype', { cardtype_id: Number(editingId), name: editingValue });
     setEditingId('');
     setEditingValue('');
     load();

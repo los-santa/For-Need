@@ -13,21 +13,17 @@ db.exec(`DROP TABLE IF EXISTS PROJECTS`);
 // 카드타입 테이블 생성
 db.exec(`
   CREATE TABLE IF NOT EXISTS CARDTYPES (
-    cardtype_id TEXT PRIMARY KEY,
+    cardtype_id INTEGER PRIMARY KEY AUTOINCREMENT,
     cardtype_name TEXT UNIQUE NOT NULL,
     createdat TEXT
   )
 `);
 
-// 기본 카드타입 데이터 삽입
-db.exec(`
-  INSERT OR IGNORE INTO CARDTYPES (cardtype_id, cardtype_name, createdat) VALUES
-    ('entity', 'entity', datetime('now')),
-    ('habit', 'habit', datetime('now')),
-    ('action', 'action', datetime('now')),
-    ('destination', 'destination', datetime('now')),
-    ('if', 'IF', datetime('now'))
-`);
+// 기본 카드타입 데이터 삽입 (존재하지 않을 때만)
+const defaultTypes = ['entity','habit','action','destination','IF'];
+defaultTypes.forEach(name=>{
+  db.prepare('INSERT OR IGNORE INTO CARDTYPES (cardtype_name, createdat) VALUES (?, datetime("now"))').run(name);
+});
 
 // 프로젝트 테이블 생성
 db.exec(`
@@ -45,7 +41,7 @@ db.exec(`
     project_id TEXT DEFAULT NULL,
     title TEXT NOT NULL,
     content TEXT,
-    cardtype TEXT DEFAULT NULL,
+    cardtype INTEGER DEFAULT NULL,
     complete INTEGER DEFAULT 0,
     activate INTEGER DEFAULT 0,
     duration INTEGER,
