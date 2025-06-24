@@ -498,17 +498,17 @@ function Home() {
         {cardDetail ? (
           <div style={{display:'flex',flexDirection:'column',gap:8}}>
             <div><strong>ID:</strong> {cardDetail.id}</div>
-            <label style={{display:'flex',flexDirection:'column',gap:4}}>
+            <label style={{display:'flex',alignItems:'center',gap:8}}>
               제목
               <input className="editor-input" value={cardDetail.title} onChange={(e)=>updateCardField('title',e.target.value)} />
             </label>
 
-            <label style={{display:'flex',flexDirection:'column',gap:4}}>
+            <label style={{display:'flex',alignItems:'center',gap:8}}>
               내용
               <textarea className="editor-input" value={cardDetail.content||''} onChange={(e)=>updateCardField('content',e.target.value)} rows={4} />
             </label>
 
-            <label style={{display:'flex',flexDirection:'column',gap:4}}>
+            <label style={{display:'flex',alignItems:'center',gap:8}}>
               카드타입
               <select className="editor-select" value={cardDetail.cardtype||''} onChange={(e)=>updateCardField('cardtype',e.target.value)}>
                 <option value="">(없음)</option>
@@ -516,53 +516,53 @@ function Home() {
               </select>
             </label>
 
-            <label style={{display:'flex',alignItems:'center',gap:4}}>
+            <label style={{display:'flex',alignItems:'center',gap:8}}>
               완료
               <input type="checkbox" checked={Boolean(cardDetail.complete)} onChange={(e)=>updateCardField('complete',e.target.checked?1:0)} />
             </label>
 
-            <label style={{display:'flex',alignItems:'center',gap:4}}>
+            <label style={{display:'flex',alignItems:'center',gap:8}}>
               활성화
               <input type="checkbox" checked={Boolean(cardDetail.activate)} onChange={(e)=>updateCardField('activate',e.target.checked?1:0)} />
             </label>
 
-            <label style={{display:'flex',flexDirection:'column',gap:4}}>
+            <label style={{display:'flex',alignItems:'center',gap:8}}>
               기간
               <input className="editor-input" type="number" value={cardDetail.duration||''} onChange={(e)=>updateCardField('duration',e.target.value?Number(e.target.value):null)} />
             </label>
 
-            <label style={{display:'flex',flexDirection:'column',gap:4}}>
-              ES
-              <input className="editor-input" value={cardDetail.es||''} onChange={(e)=>updateCardField('es',e.target.value)} />
-            </label>
+            <label style={{display:'flex',alignItems:'center',gap:8}}>
+               ES
+               <input className="editor-input" value={cardDetail.es||''} onChange={(e)=>updateCardField('es',e.target.value)} />
+             </label>
 
-            <label style={{display:'flex',flexDirection:'column',gap:4}}>
-              LS
-              <input className="editor-input" value={cardDetail.ls||''} onChange={(e)=>updateCardField('ls',e.target.value)} />
-            </label>
+             <label style={{display:'flex',alignItems:'center',gap:8}}>
+               LS
+               <input className="editor-input" value={cardDetail.ls||''} onChange={(e)=>updateCardField('ls',e.target.value)} />
+             </label>
 
-            <label style={{display:'flex',flexDirection:'column',gap:4}}>
-              시작일
-              <input className="editor-input" type="date" value={cardDetail.startdate?.slice(0,10)||''} onChange={(e)=>updateCardField('startdate',e.target.value)} />
-            </label>
+             <label style={{display:'flex',alignItems:'center',gap:8}}>
+               시작일
+               <input className="editor-input" type="date" value={cardDetail.startdate?.slice(0,10)||''} onChange={(e)=>updateCardField('startdate',e.target.value)} />
+             </label>
 
-            <label style={{display:'flex',flexDirection:'column',gap:4}}>
-              종료일
-              <input className="editor-input" type="date" value={cardDetail.enddate?.slice(0,10)||''} onChange={(e)=>updateCardField('enddate',e.target.value)} />
-            </label>
+             <label style={{display:'flex',alignItems:'center',gap:8}}>
+               종료일
+               <input className="editor-input" type="date" value={cardDetail.enddate?.slice(0,10)||''} onChange={(e)=>updateCardField('enddate',e.target.value)} />
+             </label>
 
-            <label style={{display:'flex',flexDirection:'column',gap:4}}>
-              가격
-              <input className="editor-input" type="number" value={cardDetail.price||''} onChange={(e)=>updateCardField('price',e.target.value?Number(e.target.value):null)} />
-            </label>
+             <label style={{display:'flex',alignItems:'center',gap:8}}>
+               가격
+               <input className="editor-input" type="number" value={cardDetail.price||''} onChange={(e)=>updateCardField('price',e.target.value?Number(e.target.value):null)} />
+             </label>
 
-            <label style={{display:'flex',flexDirection:'column',gap:4}}>
-              프로젝트
-              <select className="editor-select" value={cardDetail.project_id||''} onChange={(e)=>updateCardField('project_id',e.target.value||null)}>
-                <option value="">(없음)</option>
-                {projects.map(p=>(<option key={p.project_id} value={p.project_id}>{p.project_name}</option>))}
-              </select>
-            </label>
+             <label style={{display:'flex',alignItems:'center',gap:8}}>
+               프로젝트
+               <select className="editor-select" value={cardDetail.project_id||''} onChange={(e)=>updateCardField('project_id',e.target.value||null)}>
+                 <option value="">(없음)</option>
+                 {projects.map(p=>(<option key={p.project_id} value={p.project_id}>{p.project_name}</option>))}
+               </select>
+             </label>
 
             <div><strong>생성일:</strong> {cardDetail.createdat}</div>
           </div>
