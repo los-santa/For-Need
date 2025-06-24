@@ -240,29 +240,6 @@ function Home() {
     setTimeout(() => setToast(''), 3000);
   };
 
-  // 카드타입 입력 Enter 처리
-  const handleCardTypeEnter = async () => {
-    const name = cardTypeInput.trim();
-    if (!name) return;
-    let targetId = '';
-    const exists = cardTypes.find((ct) => ct.cardtype_name === name);
-    if (exists) {
-      targetId = exists.cardtype_id;
-    } else {
-      const res = (await window.electron.ipcRenderer.invoke('create-cardtype', { name })) as any;
-      if (res.success) {
-        targetId = res.data.id;
-        const ct = (await window.electron.ipcRenderer.invoke('get-cardtypes')) as any;
-        if (ct.success) setCardTypes(ct.data);
-      }
-    }
-    if (targetId) {
-      await window.electron.ipcRenderer.invoke('update-cardtype', { card_id: currentCardId, cardtype: targetId });
-      await loadCards();
-      showToast(`${cards.find((c) => c.id === currentCardId)?.title} 카드의 카드타입을 ${name} 으로 변경 완료`);
-    }
-  };
-
   // 선택 카드 제목 변경 (버튼)
   const editTitle = async () => {
     const current = cards.find((c) => c.id === currentCardId);
@@ -446,28 +423,6 @@ function Home() {
           <button type="button" onClick={()=>{if(currentCardId){setModalCardId(currentCardId); setModalNewTitle(cardTitleInput);} setShowTitleModal(true);}} className="editor-button" tabIndex={-1}>제목수정</button>
         </div>
 
-        {/* 카드 타입 (입력) */}
-        <div className="editor-row">
-          <input
-            id="cardTypeInput"
-            list="cardTypeOptions"
-            value={cardTypeInput}
-            onChange={(e) => setCardTypeInput(e.target.value)}
-            onKeyDown={async (e) => {
-              if (e.key === 'Enter') {
-                await handleCardTypeEnter();
-              }
-            }}
-            className="editor-input"
-            placeholder="카드 타입"
-          />
-          <datalist id="cardTypeOptions">
-            {cardTypes.map((ct) => (
-              <option key={ct.cardtype_id} value={ct.cardtype_name} />
-            ))}
-          </datalist>
-        </div>
-
         {/* 관계 생성 영역 */}
         <div className="editor-row">
           <input
@@ -545,17 +500,17 @@ function Home() {
             <div><strong>ID:</strong> {cardDetail.id}</div>
             <label style={{display:'flex',flexDirection:'column',gap:4}}>
               제목
-              <input value={cardDetail.title} onChange={(e)=>updateCardField('title',e.target.value)} />
+              <input className="editor-input" value={cardDetail.title} onChange={(e)=>updateCardField('title',e.target.value)} />
             </label>
 
             <label style={{display:'flex',flexDirection:'column',gap:4}}>
               내용
-              <textarea value={cardDetail.content||''} onChange={(e)=>updateCardField('content',e.target.value)} rows={4} />
+              <textarea className="editor-input" value={cardDetail.content||''} onChange={(e)=>updateCardField('content',e.target.value)} rows={4} />
             </label>
 
             <label style={{display:'flex',flexDirection:'column',gap:4}}>
               카드타입
-              <select value={cardDetail.cardtype||''} onChange={(e)=>updateCardField('cardtype',e.target.value)}>
+              <select className="editor-select" value={cardDetail.cardtype||''} onChange={(e)=>updateCardField('cardtype',e.target.value)}>
                 <option value="">(없음)</option>
                 {cardTypes.map(ct=>(<option key={ct.cardtype_id} value={ct.cardtype_id}>{ct.cardtype_name}</option>))}
               </select>
@@ -573,37 +528,37 @@ function Home() {
 
             <label style={{display:'flex',flexDirection:'column',gap:4}}>
               기간
-              <input type="number" value={cardDetail.duration||''} onChange={(e)=>updateCardField('duration',e.target.value?Number(e.target.value):null)} />
+              <input className="editor-input" type="number" value={cardDetail.duration||''} onChange={(e)=>updateCardField('duration',e.target.value?Number(e.target.value):null)} />
             </label>
 
             <label style={{display:'flex',flexDirection:'column',gap:4}}>
               ES
-              <input value={cardDetail.es||''} onChange={(e)=>updateCardField('es',e.target.value)} />
+              <input className="editor-input" value={cardDetail.es||''} onChange={(e)=>updateCardField('es',e.target.value)} />
             </label>
 
             <label style={{display:'flex',flexDirection:'column',gap:4}}>
               LS
-              <input value={cardDetail.ls||''} onChange={(e)=>updateCardField('ls',e.target.value)} />
+              <input className="editor-input" value={cardDetail.ls||''} onChange={(e)=>updateCardField('ls',e.target.value)} />
             </label>
 
             <label style={{display:'flex',flexDirection:'column',gap:4}}>
               시작일
-              <input type="date" value={cardDetail.startdate?.slice(0,10)||''} onChange={(e)=>updateCardField('startdate',e.target.value)} />
+              <input className="editor-input" type="date" value={cardDetail.startdate?.slice(0,10)||''} onChange={(e)=>updateCardField('startdate',e.target.value)} />
             </label>
 
             <label style={{display:'flex',flexDirection:'column',gap:4}}>
               종료일
-              <input type="date" value={cardDetail.enddate?.slice(0,10)||''} onChange={(e)=>updateCardField('enddate',e.target.value)} />
+              <input className="editor-input" type="date" value={cardDetail.enddate?.slice(0,10)||''} onChange={(e)=>updateCardField('enddate',e.target.value)} />
             </label>
 
             <label style={{display:'flex',flexDirection:'column',gap:4}}>
               가격
-              <input type="number" value={cardDetail.price||''} onChange={(e)=>updateCardField('price',e.target.value?Number(e.target.value):null)} />
+              <input className="editor-input" type="number" value={cardDetail.price||''} onChange={(e)=>updateCardField('price',e.target.value?Number(e.target.value):null)} />
             </label>
 
             <label style={{display:'flex',flexDirection:'column',gap:4}}>
               프로젝트
-              <select value={cardDetail.project_id||''} onChange={(e)=>updateCardField('project_id',e.target.value||null)}>
+              <select className="editor-select" value={cardDetail.project_id||''} onChange={(e)=>updateCardField('project_id',e.target.value||null)}>
                 <option value="">(없음)</option>
                 {projects.map(p=>(<option key={p.project_id} value={p.project_id}>{p.project_name}</option>))}
               </select>
