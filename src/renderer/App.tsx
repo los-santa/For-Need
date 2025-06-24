@@ -223,10 +223,13 @@ function Home() {
 
   useEffect(() => {
     if (currentCardId) {
-      setCardTitleInput(cards.find((c) => c.id === currentCardId)?.title || '');
+      const title = cards.find((c) => c.id === currentCardId)?.title || '';
+      if (title && cardTitleInput !== title) {
+        setCardTitleInput(title);
+      }
       const name = cardTypes.find((ct) => ct.cardtype_id === cards.find((c) => c.id === currentCardId)?.cardtype)?.cardtype_name || '';
-      setCardTypeInput(name);
-    } else {
+      if (cardTypeInput !== name) setCardTypeInput(name);
+    } else if(cardTitleInput!=='' || cardTypeInput!=='') {
       setCardTitleInput('');
       setCardTypeInput('');
     }
@@ -375,12 +378,15 @@ function Home() {
     if(!currentCardId) return;
     setCardDetail((prev:any)=>({...prev,[field]:value}));
     await window.electron.ipcRenderer.invoke('update-card-field',{card_id:currentCardId,field,value});
+
     if(field==='title'){
-      setCardTitleInput(value);
-      await loadCards();
+      setCardTitleInput(value as string);
+      // 로컬 cards 상태 업데이트
+      setCards(prev=>prev.map(c=>c.id===currentCardId?{...c,title:value}:c));
     }
+
     if(field==='cardtype'){
-      await loadCards();
+      setCards(prev=>prev.map(c=>c.id===currentCardId?{...c,cardtype:value}:c));
     }
   };
 
