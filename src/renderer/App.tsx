@@ -365,6 +365,65 @@ function Home() {
     if(field==='cardtype'){
       setCards(prev=>prev.map(c=>c.id===currentCardId?{...c,cardtype:value}:c));
     }
+
+    // ---------------------------------------------------
+    // 날짜 필드 상호 의존성 처리
+    // ---------------------------------------------------
+    const dur = Number((field==='duration'? value : cardDetail?.duration) ?? 0);
+    const addDays=(dateStr:string,days:number)=>{
+      const d=new Date(dateStr);
+      d.setDate(d.getDate()+days);
+      return d.toISOString().slice(0,10);
+    };
+    const subDays=(dateStr:string,days:number)=>addDays(dateStr,-days);
+
+    if(field==='es' && dur && typeof value==='string'){
+      const lsNew=addDays(value,dur);
+      setCardDetail((prev:any)=>({...prev,ls:lsNew}));
+      await window.electron.ipcRenderer.invoke('update-card-field',{card_id:currentCardId,field:'ls',value:lsNew});
+    }
+
+    if(field==='ls' && dur && typeof value==='string'){
+      const esNew=subDays(value,dur);
+      setCardDetail((prev:any)=>({...prev,es:esNew}));
+      await window.electron.ipcRenderer.invoke('update-card-field',{card_id:currentCardId,field:'es',value:esNew});
+    }
+
+    if(field==='startdate' && dur && typeof value==='string'){
+      const endNew=addDays(value,dur);
+      setCardDetail((prev:any)=>({...prev,enddate:endNew}));
+      await window.electron.ipcRenderer.invoke('update-card-field',{card_id:currentCardId,field:'enddate',value:endNew});
+    }
+
+    if(field==='enddate' && dur && typeof value==='string'){
+      const startNew=subDays(value,dur);
+      setCardDetail((prev:any)=>({...prev,startdate:startNew}));
+      await window.electron.ipcRenderer.invoke('update-card-field',{card_id:currentCardId,field:'startdate',value:startNew});
+    }
+  };
+
+  // 카드타입 저장 (세부사항 패널에서 호출)
+  const saveCardType = async () => {
+    const name = cardTypeInput.trim();
+    if (!name || !currentCardId) return;
+    let targetId = '';
+    const exists = cardTypes.find((ct) => ct.cardtype_name === name);
+    if (exists) {
+      targetId = exists.cardtype_id;
+    } else {
+      const res = (await window.electron.ipcRenderer.invoke('create-cardtype', { name })) as any;
+      if (res.success) {
+        targetId = res.data.id;
+        const ct = (await window.electron.ipcRenderer.invoke('get-cardtypes')) as any;
+        if (ct.success) setCardTypes(ct.data);
+      }
+    }
+    if (targetId) {
+      await window.electron.ipcRenderer.invoke('update-cardtype', { card_id: currentCardId, cardtype: targetId });
+      setCardDetail((prev:any)=>({...prev,cardtype:targetId}));
+      setCards(prev=>prev.map(c=>c.id===currentCardId?{...c,cardtype:targetId}:c));
+      setCardTypeInput(name);
+    }
   };
 
   return (
@@ -510,10 +569,19 @@ function Home() {
 
             <label style={{display:'flex',alignItems:'center',gap:8}}>
               카드타입
-              <select className="editor-select" value={cardDetail.cardtype||''} onChange={(e)=>updateCardField('cardtype',e.target.value)}>
-                <option value="">(없음)</option>
-                {cardTypes.map(ct=>(<option key={ct.cardtype_id} value={ct.cardtype_id}>{ct.cardtype_name}</option>))}
-              </select>
+              <input
+                list="cardTypeOptions"
+                className="editor-input"
+                value={cardTypeInput}
+                onChange={(e)=>setCardTypeInput(e.target.value)}
+                onBlur={saveCardType}
+                placeholder="카드타입"
+              />
+              <datalist id="cardTypeOptions">
+                {cardTypes.map((ct) => (
+                  <option key={ct.cardtype_id} value={ct.cardtype_name} />
+                ))}
+              </datalist>
             </label>
 
             <label style={{display:'flex',alignItems:'center',gap:8}}>
@@ -553,7 +621,16 @@ function Home() {
 
             <label style={{display:'flex',alignItems:'center',gap:8}}>
               가격
-              <input className="editor-input" type="number" value={cardDetail.price||''} onChange={(e)=>updateCardField('price',e.target.value?Number(e.target.value):null)} />
+              <input
+                className="editor-input"
+                type="text"
+                value={cardDetail.price!==null && cardDetail.price!==undefined ? cardDetail.price.toLocaleString('ko-KR') : ''}
+                onChange={(e)=>{
+                  const raw=e.target.value.replace(/[^0-9]/g,'');
+                  updateCardField('price',raw?Number(raw):null);
+                }}
+              />
+              <span>원</span>
             </label>
 
             <label style={{display:'flex',alignItems:'center',gap:8}}>
