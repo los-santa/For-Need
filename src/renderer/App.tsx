@@ -353,6 +353,13 @@ function Home() {
   // generic field update handler
   const updateCardField = async(field:string,value:any)=>{
     if(!currentCardId) return;
+    const addDays = (dateStr:string,days:number)=>{
+      const d=new Date(dateStr);
+      d.setDate(d.getDate()+days);
+      return d.toISOString().slice(0,10);
+    };
+    const subDays=(dateStr:string,days:number)=>addDays(dateStr,-days);
+
     setCardDetail((prev:any)=>({...prev,[field]:value}));
     await window.electron.ipcRenderer.invoke('update-card-field',{card_id:currentCardId,field,value});
 
@@ -366,39 +373,40 @@ function Home() {
       setCards(prev=>prev.map(c=>c.id===currentCardId?{...c,cardtype:value}:c));
     }
 
+    // duration 수정 시 ES/LS 계산
+    if(field==='duration'){
+      const durNum = Number(value);
+      if(!Number.isNaN(durNum) && durNum>0){
+        const esVal = cardDetail?.es;
+        const lsVal = cardDetail?.ls;
+        if(esVal){
+          const lsNew = addDays(esVal,durNum);
+          setCardDetail((prev:any)=>({...prev,ls:lsNew}));
+          await window.electron.ipcRenderer.invoke('update-card-field',{card_id:currentCardId,field:'ls',value:lsNew});
+        } else if(lsVal){
+          const esNew = subDays(lsVal,durNum);
+          setCardDetail((prev:any)=>({...prev,es:esNew}));
+          await window.electron.ipcRenderer.invoke('update-card-field',{card_id:currentCardId,field:'es',value:esNew});
+        }
+      }
+    }
+
     // ---------------------------------------------------
-    // 날짜 필드 상호 의존성 처리
+    // 날짜 입력 유효성 검사 (ES/LS 범위)
     // ---------------------------------------------------
-    const dur = Number((field==='duration'? value : cardDetail?.duration) ?? 0);
-    const addDays=(dateStr:string,days:number)=>{
-      const d=new Date(dateStr);
-      d.setDate(d.getDate()+days);
-      return d.toISOString().slice(0,10);
-    };
-    const subDays=(dateStr:string,days:number)=>addDays(dateStr,-days);
+    const esCurrent = (field==='es'? value : cardDetail?.es);
+    const lsCurrent = (field==='ls'? value : cardDetail?.ls);
 
-    if(field==='es' && dur && typeof value==='string'){
-      const lsNew=addDays(value,dur);
-      setCardDetail((prev:any)=>({...prev,ls:lsNew}));
-      await window.electron.ipcRenderer.invoke('update-card-field',{card_id:currentCardId,field:'ls',value:lsNew});
-    }
-
-    if(field==='ls' && dur && typeof value==='string'){
-      const esNew=subDays(value,dur);
-      setCardDetail((prev:any)=>({...prev,es:esNew}));
-      await window.electron.ipcRenderer.invoke('update-card-field',{card_id:currentCardId,field:'es',value:esNew});
-    }
-
-    if(field==='startdate' && dur && typeof value==='string'){
-      const endNew=addDays(value,dur);
-      setCardDetail((prev:any)=>({...prev,enddate:endNew}));
-      await window.electron.ipcRenderer.invoke('update-card-field',{card_id:currentCardId,field:'enddate',value:endNew});
-    }
-
-    if(field==='enddate' && dur && typeof value==='string'){
-      const startNew=subDays(value,dur);
-      setCardDetail((prev:any)=>({...prev,startdate:startNew}));
-      await window.electron.ipcRenderer.invoke('update-card-field',{card_id:currentCardId,field:'startdate',value:startNew});
+    if((field==='startdate' || field==='enddate') && typeof value==='string'){
+      const dateVal = value;
+      const esOk = esCurrent? (new Date(dateVal) >= new Date(esCurrent)) : true;
+      const lsOk = lsCurrent? (new Date(dateVal) <= new Date(lsCurrent)) : true;
+      if(!esOk || !lsOk){
+        showToast('시작/종료일은 ES~LS 범위 내여야 합니다');
+        // revert value
+        setCardDetail((prev:any)=>({...prev,[field]:prev[field]}));
+        return;
+      }
     }
   };
 
@@ -595,7 +603,7 @@ function Home() {
             </label>
 
             <label style={{display:'flex',alignItems:'center',gap:8}}>
-              기간
+              기간(일)
               <input className="editor-input" type="number" value={cardDetail.duration||''} onChange={(e)=>updateCardField('duration',e.target.value?Number(e.target.value):null)} />
             </label>
 
