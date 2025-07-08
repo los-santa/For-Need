@@ -585,9 +585,17 @@ function Home() {
             <li style={{padding:4,color:'#888'}}>관계가 없습니다</li>
           ) : (
             relations.map(r=> (
-              <li key={r.relation_id} style={{display:'flex',gap:4,padding:'2px 4px',borderBottom:'1px solid #333'}}>
-                <span style={{flex:1,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{cardTitleInput.trim()||'(선택)'} </span>
-                <span>{r.typename}</span>
+              <li
+                key={r.relation_id}
+                style={{display:'flex',gap:12,padding:'2px 4px',borderBottom:'1px solid #333',cursor:'pointer'}}
+                title={`${r.target_title ?? r.target} 카드로 이동`}
+                onClick={()=>{
+                  const tgtTitle = r.target_title || r.target;
+                  setCardTitleInput(tgtTitle);
+                  setCurrentCardId(r.target);
+                }}
+              >
+                <span style={{fontWeight:600}}>{r.typename}</span>
                 <span style={{flex:1,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{r.target_title ?? r.target}</span>
               </li>
             ))
@@ -1080,7 +1088,7 @@ function RelationForm({ cards, refreshCards }: { cards: { id: string; title: str
     )) as any;
 
     if (result.success) {
-      setSourceCard('');
+      // SourceCard(제목) 유지, TargetCard 만 초기화
       setTargetCard('');
       // 성공 후 카드 목록 갱신
       refreshCards();
