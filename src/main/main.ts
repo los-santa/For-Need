@@ -482,6 +482,19 @@ ipcMain.handle('update-card-field', async (_, payload: { card_id: string; field:
   }
 });
 
+// ------------------------------------------------------------------
+// Delete Card
+// ------------------------------------------------------------------
+ipcMain.handle('delete-card', async (_, card_id: string) => {
+  try {
+    db.prepare('DELETE FROM CARDS WHERE id = ?').run(card_id);
+    return { success: true };
+  } catch (error) {
+    log.error('Failed to delete card:', error);
+    return { success: false, error: 'Failed to delete card' };
+  }
+});
+
 if (process.env.NODE_ENV === 'production') {
   const sourceMapSupport = require('source-map-support');
   sourceMapSupport.install();
@@ -554,4 +567,4 @@ app.on('activate', () => {
   if (BrowserWindow.getAllWindows().length === 0) {
     createWindow();
   }
-});
+    });

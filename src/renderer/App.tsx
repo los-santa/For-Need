@@ -134,8 +134,17 @@ function Projects() {
       </div>
       <ul>
         {cards.map((c) => (
-          <li key={c.id}>
-            {c.title} <span style={{ color: '#888' }}>({c.id})</span>
+          <li key={c.id} style={{ display:'flex', justifyContent:'space-between', gap:8 }}>
+            <span>{c.title}</span>
+            <button
+              style={{padding:'0 6px'}}
+              onClick={async()=>{
+                if(!window.confirm(`${c.title} 카드를 삭제할까요?`)) return;
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                const res = (await window.electron.ipcRenderer.invoke('delete-card', c.id)) as any;
+                if(res.success) setCards(prev=>prev.filter(cc=>cc.id!==c.id));
+              }}
+            >삭제</button>
           </li>
         ))}
       </ul>
@@ -168,12 +177,15 @@ function Home() {
   const [toast, setToast] = useState('');
   const [cardTypeInput, setCardTypeInput] = useState('');
   const [cardTitleInput, setCardTitleInput] = useState('');
-  const [oppRelationInput, setOppRelationInput] = useState('');
+  const [oppModal, setOppModal] = useState<{ show: boolean; typeName: string }>({ show: false, typeName: '' });
+  const [oppositeInput, setOppositeInput] = useState('');
   const [showTitleModal, setShowTitleModal] = useState(false);
   const [modalCardId, setModalCardId] = useState('');
   const [modalNewTitle, setModalNewTitle] = useState('');
   const [projects,setProjects]=useState<{project_id:string; project_name:string}[]>([]);
   const [cardDetail,setCardDetail]=useState<any|null>(null);
+  // 새로운 관계타입 생성 후 이어서 관계를 만들기 위한 보류 정보
+  const [pendingRelation,setPendingRelation] = useState<{sourceId:string; targetTitle:string; relTypeName:string}|null>(null);
 
   const loadCards = async () => {
     const res = (await window.electron.ipcRenderer.invoke('get-cards')) as any;
@@ -208,18 +220,16 @@ function Home() {
     })();
   }, []);
 
-  useEffect(()=>{
-    const card = cards.find(c=>c.title===cardTitleInput.trim());
-    if(card){
-      setCurrentCardId(card.id);
-      loadRelations(card.id);
-      loadCardDetail(card.id);
+  // currentCardId 가 변경되면 상세/관계 정보 로드
+  useEffect(() => {
+    if (currentCardId) {
+      loadRelations(currentCardId);
+      loadCardDetail(currentCardId);
     } else {
-      setCurrentCardId('');
       setRelations([]);
       setCardDetail(null);
     }
-  },[cardTitleInput,cards]);
+  }, [currentCardId]);
 
   useEffect(() => {
     if (currentCardId) {
@@ -300,17 +310,11 @@ function Home() {
     if (rtExists) {
       relationTypeId = rtExists.relationtype_id;
     } else {
-      // 반대 관계명은 입력란을 제거했으므로 자동 생성
-      if(!oppRelationInput.trim()) {showToast('반대 관계명을 입력하세요'); return;}
-      const res = (await window.electron.ipcRenderer.invoke('create-relationtype', {
-        typename: relationTypeInput,
-        oppsite: oppRelationInput.trim(),
-      })) as any;
-      if (res.success) {
-        relationTypeId = res.data.id;
-        const rt = (await window.electron.ipcRenderer.invoke('get-relationtypes')) as any;
-        if (rt.success) setRelationTypes(rt.data);
-      }
+      // 관계 타입이 없으면 모달을 띄워 반대 관계명을 입력받고, 이후 자동으로 이어서 처리
+      setOppModal({ show: true, typeName: relationTypeInput });
+      // 관계 생성 재호출을 위해 정보 보관
+      setPendingRelation({sourceId, targetTitle: (document.getElementById('targetCardInput') as HTMLInputElement).value.trim(), relTypeName: relationTypeInput});
+      return;
     }
 
     // target card id 확보
@@ -336,7 +340,7 @@ function Home() {
       if (res.success) {
         // relationTypeInput 유지
         (document.getElementById('targetCardInput') as HTMLInputElement).value = '';
-        setOppRelationInput('');
+        setOppModal({ show: false, typeName: '' });
         await loadRelations(sourceId);
         showToast('관계 생성 완료');
       }
@@ -434,6 +438,23 @@ function Home() {
     }
   };
 
+  // 카드 삭제 함수
+  const deleteCard = async (id: string, title: string) => {
+    if (!window.confirm(`${title} 카드를 삭제할까요?`)) return;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const res = (await window.electron.ipcRenderer.invoke('delete-card', id)) as any;
+    if (res.success) {
+      showToast(`${title} 카드 삭제 완료`);
+      if (id === currentCardId) {
+        setCardTitleInput('');
+        setCurrentCardId('');
+        setCardDetail(null);
+        setRelations([]);
+      }
+      loadCards();
+    }
+  };
+
   return (
     <div style={{ display: 'flex', height: '100%', width: '100%' }}>
       {/* 좌측 카드 리스트 */}
@@ -445,12 +466,20 @@ function Home() {
               key={c.id}
               style={{
                 padding: '6px 12px',
+                display:'flex',
+                justifyContent:'space-between',
+                gap:8,
                 cursor: 'pointer',
                 background: (cardTitleInput.trim()!=='' && cardTitleInput.trim()===c.title) ? '#444' : 'transparent',
               }}
-              onClick={() => setCardTitleInput(c.title)}
+              onClick={() => {setCardTitleInput(c.title); setCurrentCardId(c.id);} }
             >
-              {c.title}
+              <span style={{flex:1,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{c.title}</span>
+              <button
+                style={{padding:'0 6px'}}
+                onClick={(e)=>{e.stopPropagation(); deleteCard(c.id,c.title);}}
+                title="삭제"
+              >✕</button>
             </li>
           ))}
         </ul>
@@ -464,7 +493,12 @@ function Home() {
           <input
             type="text"
             value={cardTitleInput}
-            onChange={(e)=>setCardTitleInput(e.target.value)}
+            onChange={(e)=>{
+              const val = e.target.value;
+              setCardTitleInput(val);
+              const found = cards.find(c=>c.title===val.trim())?.id || '';
+              if(found!==currentCardId) setCurrentCardId(found);
+            }}
             onKeyDown={async (e)=>{
               if(e.key==='Enter'){
                 const title = cardTitleInput.trim();
@@ -530,32 +564,76 @@ function Home() {
         </div>
 
         {/* 현재 관계 목록 */}
-        <div>
-          <h4 className="editor-section-title">현재 관계</h4>
-          {relations.length === 0 ? (
-            <p style={{ color: '#888' }}>관계가 없습니다.</p>
+        <h4 className="editor-section-title" style={{margin:0}}>현재 관계</h4>
+        {/* 내보내기 버튼은 별도 섹션으로 이동 */}
+
+        {/* 관계 목록 실제 표시 */}
+        <ul style={{marginTop:8,listStyle:'none',padding:0,maxHeight:160,overflowY:'auto',border:'1px solid #444'}}>
+          {relations.length===0 ? (
+            <li style={{padding:4,color:'#888'}}>관계가 없습니다</li>
           ) : (
-            <ul style={{ paddingLeft: 16 }}>
-              {relations.map((r) => (
-                <li
-                  key={r.relation_id}
-                  style={{ display:'flex', alignItems:'center', gap:8 }}
-                >
-                  <span style={{ cursor:'pointer' }} onClick={() => setCardTitleInput(r.target_title ?? r.target)}>
-                    {r.typename} ➜ {r.target_title ?? r.target}
-                  </span>
-                  <button
-                    style={{ padding:'2px 6px' }}
-                    onClick={async(e)=>{
-                      e.stopPropagation();
-                      await window.electron.ipcRenderer.invoke('delete-relation', r.relation_id);
-                      loadRelations(currentCardId);
-                    }}
-                  >삭제</button>
-                </li>
-              ))}
-            </ul>
+            relations.map(r=> (
+              <li
+                key={r.relation_id}
+                style={{display:'flex',gap:12,padding:'2px 4px',borderBottom:'1px solid #333',cursor:'pointer'}}
+                title={`${r.target_title ?? r.target} 카드로 이동`}
+                onClick={()=>{
+                  const tgtTitle = r.target_title || r.target;
+                  setCardTitleInput(tgtTitle);
+                  setCurrentCardId(r.target);
+                }}
+              >
+                <span style={{fontWeight:600}}>{r.typename}</span>
+                <span style={{flex:1,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{r.target_title ?? r.target}</span>
+              </li>
+            ))
           )}
+        </ul>
+        {/* --- 모든 관계 내보내기 큰 버튼 ---------------------------------- */}
+        <div style={{margin:'16px 0'}}>
+          <button
+            style={{width:'100%',padding:'10px 0',fontSize:16,fontWeight:600,background:'#555',color:'#fff',border:'none',borderRadius:4,cursor:'pointer'}}
+            onClick={async()=>{
+              // 모든 관계 조회
+              const res = await window.electron.ipcRenderer.invoke('get-relations') as any;
+              if(!res.success || res.data.length===0){ showToast('관계가 없습니다'); return; }
+              const relArr = res.data as any[];
+              const list = relArr.map(r=>`- ${r.source_title ?? r.source} ${r.typename} ${r.target_title ?? r.target}`).join('\n');
+
+              // 시간 정보 수집
+              const idSet = new Set<string>();
+              relArr.forEach(r=>{ idSet.add(r.source); idSet.add(r.target); });
+              const timeLines: string[] = [];
+              const legend = "ES: 빠르면 이때 시작 가능 | LS: 늦으면 이때 시작 가능 | 예정: 실제 시작/종료 예정일";
+              for(const id of idSet){
+                // eslint-disable-next-line no-await-in-loop
+                const det = await window.electron.ipcRenderer.invoke('get-card-detail',id) as any;
+                if(det.success){
+                  const c = det.data;
+                  const es = c.es?.slice(0,10);
+                  const ls = c.ls?.slice(0,10);
+                  const sd = c.startdate?.slice(0,10);
+                  const ed = c.enddate?.slice(0,10);
+                  const parts:string[]=[];
+                  if(es) parts.push(`ES: ${es}`);
+                  if(ls) parts.push(`LS: ${ls}`);
+                  if(sd||ed){
+                    const p = `예정: ${sd||''}${(sd&&ed)?'~':''}${ed||''}`;
+                    parts.push(p);
+                  }
+                  if(parts.length) timeLines.push(`- ${c.title} | ${parts.join(' | ')}`);
+                }
+              }
+
+              const text = `아래 관계들을 검토하여 이 관계의 논리적 오류가 있는지 점검하고, 이를 기반으로 계획을 세워줘.\n\n전체 관계 목록 (총 ${relArr.length}건)\n${list}\n\n시간정보가 있는 카드 목록${timeLines.length?` (총 ${timeLines.length}건)`:''}\n${legend}\n${timeLines.join('\n')}`;
+              try{
+                await navigator.clipboard.writeText(text);
+                showToast('모든 관계가 클립보드에 복사되었습니다');
+              }catch(err){
+                showToast('클립보드 복사 실패');
+              }
+            }}
+          >모든 관계 내보내기</button>
         </div>
       </section>
 
@@ -691,6 +769,96 @@ function Home() {
                 await loadCards();
                 showToast('제목 변경 완료');
               }}>저장</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* --- Opposite relation modal -------------------------------- */}
+      {oppModal.show && (
+        <div
+          style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            width: '100%',
+            height: '100%',
+            background: 'rgba(0,0,0,0.5)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 1000,
+          }}
+        >
+          <div style={{ background: '#222', padding: 24, borderRadius: 8, minWidth: 320 }}>
+            <h4 style={{ marginTop: 0 }}>{oppModal.typeName} 의 반대 관계명 입력</h4>
+            <input
+              className="editor-input"
+              type="text"
+              value={oppositeInput}
+              onChange={(e) => setOppositeInput(e.target.value)}
+              placeholder="반대 관계명"
+              style={{ width: '100%' }}
+            />
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 16 }}>
+              <button
+                onClick={() => {
+                  setOppModal({ show: false, typeName: '' });
+                  setOppositeInput('');
+                }}
+              >
+                취소
+              </button>
+              <button
+                onClick={async () => {
+                  const name = oppositeInput.trim();
+                  if (!name) {
+                    showToast('반대 관계명을 입력하세요');
+                    return;
+                  }
+                  // 1) 관계타입 생성
+                  const res = (await window.electron.ipcRenderer.invoke('create-relationtype', {
+                    typename: oppModal.typeName,
+                    oppsite: name,
+                  })) as any;
+                  if (!res.success) { showToast('관계타입 생성 실패'); return; }
+
+                  // 2) 최신 관계타입 목록 갱신
+                  const rtAll = (await window.electron.ipcRenderer.invoke('get-relationtypes')) as any;
+                  if (rtAll.success) setRelationTypes(rtAll.data);
+
+                  // 3) pendingRelation 정보로 이어서 카드/관계 생성
+                  if(pendingRelation){
+                    const newTypeId = res.data.id;
+                    // target 카드 준비
+                    let tgtId:string|undefined;
+                    const tgtExist = cards.find(c=>c.title===pendingRelation.targetTitle);
+                    if(tgtExist){ tgtId = tgtExist.id; }
+                    else {
+                      const crt = await window.electron.ipcRenderer.invoke('create-card',{title:pendingRelation.targetTitle}) as any;
+                      if(crt.success){ tgtId = crt.data.id; await loadCards(); }
+                    }
+
+                    if(tgtId){
+                      await window.electron.ipcRenderer.invoke('create-relation',{
+                        relationtype_id:newTypeId,
+                        source:pendingRelation.sourceId,
+                        target:tgtId
+                      });
+                      await loadRelations(pendingRelation.sourceId);
+                    }
+                  }
+
+                  // 4) 모달/보류 상태 초기화 및 UI 정리
+                  setPendingRelation(null);
+                  setOppModal({ show: false, typeName: '' });
+                  setOppositeInput('');
+                  (document.getElementById('targetCardInput') as HTMLInputElement).value='';
+                  showToast('관계 생성 완료');
+                }}
+              >
+                확인
+              </button>
             </div>
           </div>
         </div>
@@ -981,7 +1149,7 @@ function RelationForm({ cards, refreshCards }: { cards: { id: string; title: str
     )) as any;
 
     if (result.success) {
-      setSourceCard('');
+      // SourceCard(제목) 유지, TargetCard 만 초기화
       setTargetCard('');
       // 성공 후 카드 목록 갱신
       refreshCards();
