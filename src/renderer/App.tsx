@@ -184,6 +184,8 @@ function Home() {
   const [modalNewTitle, setModalNewTitle] = useState('');
   const [projects,setProjects]=useState<{project_id:string; project_name:string}[]>([]);
   const [cardDetail,setCardDetail]=useState<any|null>(null);
+  // 새로운 관계타입 생성 후 이어서 관계를 만들기 위한 보류 정보
+  const [pendingRelation,setPendingRelation] = useState<{sourceId:string; targetTitle:string; relTypeName:string}|null>(null);
 
   const loadCards = async () => {
     const res = (await window.electron.ipcRenderer.invoke('get-cards')) as any;
@@ -308,9 +310,11 @@ function Home() {
     if (rtExists) {
       relationTypeId = rtExists.relationtype_id;
     } else {
-      // 관계 타입이 없으면 모달을 띄워 반대 관계명을 입력받는다
+      // 관계 타입이 없으면 모달을 띄워 반대 관계명을 입력받고, 이후 자동으로 이어서 처리
       setOppModal({ show: true, typeName: relationTypeInput });
-      return; // 이후 로직은 모달 확인 후 재호출
+      // 관계 생성 재호출을 위해 정보 보관
+      setPendingRelation({sourceId, targetTitle: (document.getElementById('targetCardInput') as HTMLInputElement).value.trim(), relTypeName: relationTypeInput});
+      return;
     }
 
     // target card id 확보
@@ -560,24 +564,8 @@ function Home() {
         </div>
 
         {/* 현재 관계 목록 */}
-        <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
-          <h4 className="editor-section-title" style={{margin:0}}>현재 관계</h4>
-          <button
-            style={{padding:'2px 6px',fontSize:12}}
-            onClick={async()=>{
-              if(relations.length===0){showToast('관계가 없습니다'); return;}
-              const source = cardTitleInput.trim() || '(선택 카드 없음)';
-              const list = relations.map(r=>`- ${source} ${r.typename} ${r.target_title ?? r.target}`).join('\n');
-              const text = `아래 카드 관계들을 기반으로 1) 관계 오류·누락 점검 2) 플래닝(향후 작업/계획) 생성 3) 전반적인 피드백을 제공해주세요.\n\n${list}`;
-              try {
-                await navigator.clipboard.writeText(text);
-                showToast('관계 목록이 클립보드에 복사되었습니다');
-              } catch(err){
-                showToast('클립보드 복사 실패');
-              }
-            }}
-          >관계 내보내기</button>
-        </div>
+        <h4 className="editor-section-title" style={{margin:0}}>현재 관계</h4>
+        {/* 내보내기 버튼은 별도 섹션으로 이동 */}
 
         {/* 관계 목록 실제 표시 */}
         <ul style={{marginTop:8,listStyle:'none',padding:0,maxHeight:160,overflowY:'auto',border:'1px solid #444'}}>
@@ -601,6 +589,52 @@ function Home() {
             ))
           )}
         </ul>
+        {/* --- 모든 관계 내보내기 큰 버튼 ---------------------------------- */}
+        <div style={{margin:'16px 0'}}>
+          <button
+            style={{width:'100%',padding:'10px 0',fontSize:16,fontWeight:600,background:'#555',color:'#fff',border:'none',borderRadius:4,cursor:'pointer'}}
+            onClick={async()=>{
+              // 모든 관계 조회
+              const res = await window.electron.ipcRenderer.invoke('get-relations') as any;
+              if(!res.success || res.data.length===0){ showToast('관계가 없습니다'); return; }
+              const relArr = res.data as any[];
+              const list = relArr.map(r=>`- ${r.source_title ?? r.source} ${r.typename} ${r.target_title ?? r.target}`).join('\n');
+
+              // 시간 정보 수집
+              const idSet = new Set<string>();
+              relArr.forEach(r=>{ idSet.add(r.source); idSet.add(r.target); });
+              const timeLines: string[] = [];
+              const legend = "ES: 빠르면 이때 시작 가능 | LS: 늦으면 이때 시작 가능 | 예정: 실제 시작/종료 예정일";
+              for(const id of idSet){
+                // eslint-disable-next-line no-await-in-loop
+                const det = await window.electron.ipcRenderer.invoke('get-card-detail',id) as any;
+                if(det.success){
+                  const c = det.data;
+                  const es = c.es?.slice(0,10);
+                  const ls = c.ls?.slice(0,10);
+                  const sd = c.startdate?.slice(0,10);
+                  const ed = c.enddate?.slice(0,10);
+                  const parts:string[]=[];
+                  if(es) parts.push(`ES: ${es}`);
+                  if(ls) parts.push(`LS: ${ls}`);
+                  if(sd||ed){
+                    const p = `예정: ${sd||''}${(sd&&ed)?'~':''}${ed||''}`;
+                    parts.push(p);
+                  }
+                  if(parts.length) timeLines.push(`- ${c.title} | ${parts.join(' | ')}`);
+                }
+              }
+
+              const text = `아래 관계들을 검토하여 이 관계의 논리적 오류가 있는지 점검하고, 이를 기반으로 계획을 세워줘.\n\n전체 관계 목록 (총 ${relArr.length}건)\n${list}\n\n시간정보가 있는 카드 목록${timeLines.length?` (총 ${timeLines.length}건)`:''}\n${legend}\n${timeLines.join('\n')}`;
+              try{
+                await navigator.clipboard.writeText(text);
+                showToast('모든 관계가 클립보드에 복사되었습니다');
+              }catch(err){
+                showToast('클립보드 복사 실패');
+              }
+            }}
+          >모든 관계 내보내기</button>
+        </div>
       </section>
 
       {/* 우측 카드 세부사항 */}
@@ -782,18 +816,45 @@ function Home() {
                     showToast('반대 관계명을 입력하세요');
                     return;
                   }
+                  // 1) 관계타입 생성
                   const res = (await window.electron.ipcRenderer.invoke('create-relationtype', {
                     typename: oppModal.typeName,
                     oppsite: name,
                   })) as any;
-                  if (res.success) {
-                    const rt = (await window.electron.ipcRenderer.invoke('get-relationtypes')) as any;
-                    if (rt.success) setRelationTypes(rt.data);
-                    setOppModal({ show: false, typeName: '' });
-                    setOppositeInput('');
-                    // 새 타입이 등록되었으므로 다시 관계 생성 시도
-                    handleCreateRelation();
+                  if (!res.success) { showToast('관계타입 생성 실패'); return; }
+
+                  // 2) 최신 관계타입 목록 갱신
+                  const rtAll = (await window.electron.ipcRenderer.invoke('get-relationtypes')) as any;
+                  if (rtAll.success) setRelationTypes(rtAll.data);
+
+                  // 3) pendingRelation 정보로 이어서 카드/관계 생성
+                  if(pendingRelation){
+                    const newTypeId = res.data.id;
+                    // target 카드 준비
+                    let tgtId:string|undefined;
+                    const tgtExist = cards.find(c=>c.title===pendingRelation.targetTitle);
+                    if(tgtExist){ tgtId = tgtExist.id; }
+                    else {
+                      const crt = await window.electron.ipcRenderer.invoke('create-card',{title:pendingRelation.targetTitle}) as any;
+                      if(crt.success){ tgtId = crt.data.id; await loadCards(); }
+                    }
+
+                    if(tgtId){
+                      await window.electron.ipcRenderer.invoke('create-relation',{
+                        relationtype_id:newTypeId,
+                        source:pendingRelation.sourceId,
+                        target:tgtId
+                      });
+                      await loadRelations(pendingRelation.sourceId);
+                    }
                   }
+
+                  // 4) 모달/보류 상태 초기화 및 UI 정리
+                  setPendingRelation(null);
+                  setOppModal({ show: false, typeName: '' });
+                  setOppositeInput('');
+                  (document.getElementById('targetCardInput') as HTMLInputElement).value='';
+                  showToast('관계 생성 완료');
                 }}
               >
                 확인
