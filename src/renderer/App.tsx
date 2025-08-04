@@ -291,14 +291,18 @@ function Home() {
       sourceId = srcExists.id;
     } else {
       const created = (await window.electron.ipcRenderer.invoke('create-card', { title: sourceTitle })) as any;
-      if (created.success) {
-        sourceId = created.data.id;
-        await loadCards();
-      } else if (created.error === 'duplicate-title') {
-        // theoretically not reached due to earlier search but safe guard
-        const dup = (cards.find((c)=>c.title===sourceTitle) || {}) as any;
-        sourceId = dup.id;
-      }
+              if (created.success) {
+          sourceId = created.data.id;
+          setCurrentCardId(sourceId);
+          await loadCards();
+        } else if (created.error === 'duplicate-title') {
+          // theoretically not reached due to earlier search but safe guard
+          const dup = (cards.find((c)=>c.title===sourceTitle) || {}) as any;
+          if (dup.id) {
+            sourceId = dup.id;
+            setCurrentCardId(sourceId);
+          }
+        }
     }
 
     if (!sourceId) return;
@@ -496,8 +500,13 @@ function Home() {
             onChange={(e)=>{
               const val = e.target.value;
               setCardTitleInput(val);
-              const found = cards.find(c=>c.title===val.trim())?.id || '';
-              if(found!==currentCardId) setCurrentCardId(found);
+              const trimmed = val.trim();
+              const found = cards.find(c=>c.title===trimmed)?.id;
+              if(trimmed==='') {
+                if(currentCardId) setCurrentCardId('');
+              } else if(found && found!==currentCardId) {
+                setCurrentCardId(found);
+              }
             }}
             onKeyDown={async (e)=>{
               if(e.key==='Enter'){
@@ -1138,20 +1147,53 @@ function RelationForm({ cards, refreshCards }: { cards: { id: string; title: str
   const handleSubmit = async () => {
     if (!sourceCard || !targetCard) return;
 
+    let srcId = sourceCard;
+    let tgtId = targetCard;
+
+    // 소스 카드가 존재하지 않으면 새로 생성
+    const srcFound = cards.find(c => c.id === sourceCard || c.title === sourceCard);
+    if (!srcFound) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const res = (await window.electron.ipcRenderer.invoke('create-card', { title: sourceCard })) as any;
+      if (res.success) {
+        srcId = res.data.id;
+        setSourceCard(srcId); // 셀렉트가 비워지지 않도록 갱신
+      } else if (res.error === 'duplicate-title') {
+        const dup = cards.find(c => c.title === sourceCard);
+        if (dup) srcId = dup.id;
+      }
+    } else {
+      srcId = srcFound.id;
+    }
+
+    // 타겟 카드가 존재하지 않으면 새로 생성 (기존 로직과 동일하게 빈칸 유지)
+    const tgtFound = cards.find(c => c.id === targetCard || c.title === targetCard);
+    if (!tgtFound) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const res = (await window.electron.ipcRenderer.invoke('create-card', { title: targetCard })) as any;
+      if (res.success) {
+        tgtId = res.data.id;
+      } else if (res.error === 'duplicate-title') {
+        const dup = cards.find(c => c.title === targetCard);
+        if (dup) tgtId = dup.id;
+      }
+    } else {
+      tgtId = tgtFound.id;
+    }
+
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const result = (await window.electron.ipcRenderer.invoke(
       'create-relation',
       {
         relationtype_id: Number(relationType),
-        source: sourceCard,
-        target: targetCard,
+        source: srcId,
+        target: tgtId,
       },
     )) as any;
 
     if (result.success) {
-      // SourceCard(제목) 유지, TargetCard 만 초기화
+      // SourceCard 유지, TargetCard 초기화
       setTargetCard('');
-      // 성공 후 카드 목록 갱신
       refreshCards();
     }
   };
