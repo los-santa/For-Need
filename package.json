@@ -1,6 +1,6 @@
 {
-  "name": "electron-react-boilerplate",
-  "description": "A foundation for scalable desktop apps",
+  "name": "forneed",
+  "description": "ForNeed - Task and Relationship Management App",
   "keywords": [
     "electron",
     "boilerplate",
@@ -177,15 +177,16 @@
     "webpack-merge": "^6.0.1"
   },
   "build": {
-    "productName": "ElectronReact",
-    "appId": "org.erb.ElectronReact",
+    "productName": "ForNeed",
+    "appId": "com.forneed.app",
     "asar": true,
     "afterSign": ".erb/scripts/notarize.js",
     "asarUnpack": "**\\*.{node,dll}",
     "files": [
       "dist",
       "node_modules",
-      "package.json"
+      "package.json",
+      "database.db"
     ],
     "mac": {
       "notarize": false,
