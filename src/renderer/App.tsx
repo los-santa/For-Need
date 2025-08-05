@@ -581,7 +581,7 @@ function Home() {
           {relations.length===0 ? (
             <li style={{padding:4,color:'#888'}}>관계가 없습니다</li>
           ) : (
-            relations.map(r=> (
+            relations.sort((a, b) => a.relationtype_id - b.relationtype_id).map(r=> (
               <li
                 key={r.relation_id}
                 style={{display:'flex',gap:12,padding:'2px 4px',borderBottom:'1px solid #333',cursor:'pointer'}}
@@ -1082,7 +1082,7 @@ function RelationManage() {
       <table style={{width:'100%',borderCollapse:'collapse'}}>
         <thead><tr><th>ID</th><th>Source</th><th>Type</th><th>Target</th><th></th></tr></thead>
         <tbody>
-          {relations.map(r=> (
+          {relations.sort((a, b) => a.relationtype_id - b.relationtype_id).map(r=> (
             <tr key={r.relation_id}>
               <td>{r.relation_id}</td>
               <td>{r.source_title || r.source}</td>
