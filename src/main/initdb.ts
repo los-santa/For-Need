@@ -1,13 +1,21 @@
 import Database from 'better-sqlite3';
+import { app } from 'electron';
+import path from 'path';
+import fs from 'fs';
 
-const db = new Database('database.db');
+// 사용자 데이터 디렉토리에 데이터베이스 생성
+const userDataPath = app.getPath('userData');
+const dbPath = path.join(userDataPath, 'database.db');
 
-// 드랍 순서는 외래키 의존성을 고려해 RELATION → RELATIONTYPE → CARDS → CARDTYPES → PROJECTS 순으로 처리
-db.exec(`DROP TABLE IF EXISTS RELATION`);
-db.exec(`DROP TABLE IF EXISTS RELATIONTYPE`);
-db.exec(`DROP TABLE IF EXISTS CARDS`);
-db.exec(`DROP TABLE IF EXISTS CARDTYPES`);
-db.exec(`DROP TABLE IF EXISTS PROJECTS`);
+// 디렉토리 존재 확인 및 생성
+if (!fs.existsSync(userDataPath)) {
+  fs.mkdirSync(userDataPath, { recursive: true });
+}
+
+const db = new Database(dbPath);
+
+// 기존 데이터 유지를 위해 DROP 문 제거
+// 테이블이 없을 때만 생성하도록 CREATE TABLE IF NOT EXISTS 사용
 
 // 테이블 생성 및 초기 데이터 삽입
 // 카드타입 테이블 생성
