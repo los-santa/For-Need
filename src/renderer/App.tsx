@@ -806,8 +806,16 @@ function Home() {
               type="text"
               value={oppositeInput}
               onChange={(e) => setOppositeInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault();
+                  // 확인 버튼 클릭과 동일한 로직 실행
+                  document.querySelector('.opposite-confirm-btn')?.click();
+                }
+              }}
               placeholder="반대 관계명"
               style={{ width: '100%' }}
+              autoFocus
             />
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 16 }}>
               <button
@@ -819,6 +827,7 @@ function Home() {
                 취소
               </button>
               <button
+                className="opposite-confirm-btn"
                 onClick={async () => {
                   const name = oppositeInput.trim();
                   if (!name) {
