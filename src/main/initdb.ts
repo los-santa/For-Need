@@ -3,19 +3,23 @@ import { app } from 'electron';
 import path from 'path';
 import fs from 'fs';
 
-// 사용자 데이터 디렉토리에 데이터베이스 생성
-const userDataPath = app.getPath('userData');
-const dbPath = path.join(userDataPath, 'database.db');
+// 홈 디렉토리에 ForNeed 폴더 생성하여 데이터베이스 저장
+const homeDir = app.getPath('home');
+const forNeedDir = path.join(homeDir, '.forneed');
+const dbPath = path.join(forNeedDir, 'database.db');
 
 // 디렉토리 존재 확인 및 생성
-if (!fs.existsSync(userDataPath)) {
-  fs.mkdirSync(userDataPath, { recursive: true });
+if (!fs.existsSync(forNeedDir)) {
+  fs.mkdirSync(forNeedDir, { recursive: true });
 }
+
+console.log('Database path:', dbPath);
+console.log('ForNeed dir:', forNeedDir);
+console.log('Directory exists:', fs.existsSync(forNeedDir));
 
 const db = new Database(dbPath);
 
-// 기존 데이터 유지를 위해 DROP 문 제거
-// 테이블이 없을 때만 생성하도록 CREATE TABLE IF NOT EXISTS 사용
+// 기존 데이터 유지를 위해 DROP 문 제거 - 테이블이 없을 때만 생성
 
 // 테이블 생성 및 초기 데이터 삽입
 // 카드타입 테이블 생성

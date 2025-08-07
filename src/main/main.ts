@@ -13,6 +13,7 @@ import { app, BrowserWindow, ipcMain } from 'electron';
 import log from 'electron-log';
 import db from './initdb';
 import { randomUUID } from 'crypto';
+import { resolveHtmlPath } from './util';
 
 // 데이터베이스 초기화
 try {
@@ -524,21 +525,14 @@ function createWindow() {
   const mainWindow = new BrowserWindow({
     width: 1280,
     height: 720,
+    title: 'ForNeed',
     fullscreen: process.env.NODE_ENV === 'development',
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
     },
   });
 
-  if (process.env.NODE_ENV === 'development') {
-    // electron-react-boilerplate renderer dev 서버 (기본 1212)
-    mainWindow.loadURL('http://localhost:1212');
-    // 개발 모드: 전체 화면, DevTools 자동 오픈 금지
-    mainWindow.setFullScreen(true);
-  } else {
-    // 패키징 또는 프로덕션 빌드 시 dist 폴더의 정적 파일 사용
-    mainWindow.loadFile(path.join(__dirname, '../../dist/index.html'));
-  }
+  mainWindow.loadURL(resolveHtmlPath('index.html'));
 }
 
 app.whenReady().then(async () => {
