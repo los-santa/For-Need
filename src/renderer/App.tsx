@@ -186,6 +186,18 @@ function Home() {
   const [cardDetail,setCardDetail]=useState<any|null>(null);
   // 새로운 관계타입 생성 후 이어서 관계를 만들기 위한 보류 정보
   const [pendingRelation,setPendingRelation] = useState<{sourceId:string; targetTitle:string; relTypeName:string}|null>(null);
+  // 카드 정렬 및 필터링을 위한 상태 (localStorage에서 복원)
+  const [sortByRelationType, setSortByRelationType] = useState<string>(() => {
+    try {
+      return localStorage.getItem('forneed-sort-relation-type') || 'all';
+    } catch {
+      return 'all';
+    }
+  });
+  const [allRelations, setAllRelations] = useState<any[]>([]); // 모든 관계 데이터
+  // 관계 내보내기 모달
+  const [showExportModal, setShowExportModal] = useState(false);
+  const [exportText, setExportText] = useState('');
 
   const loadCards = async () => {
     const res = (await window.electron.ipcRenderer.invoke('get-cards')) as any;
@@ -205,8 +217,47 @@ function Home() {
     }
   };
 
+  // 모든 관계 로드
+  const loadAllRelations = async () => {
+    const res = (await window.electron.ipcRenderer.invoke('get-relations')) as any;
+    if (res.success) {
+      setAllRelations(res.data);
+    }
+  };
+
+  // 카드별 관계 수 계산
+  const getRelationCount = (cardId: string) => {
+    return allRelations.filter(rel => rel.source === cardId || rel.target === cardId).length;
+  };
+
+  // 특정 관계타입의 관계 수 계산
+  const getRelationCountByType = (cardId: string, relationTypeName: string) => {
+    return allRelations.filter(rel =>
+      (rel.source === cardId || rel.target === cardId) &&
+      rel.typename === relationTypeName
+    ).length;
+  };
+
+  // 카드 정렬 함수
+  const getSortedCards = () => {
+    let sortedCards = [...cards];
+
+    if (sortByRelationType === 'all') {
+      // 전체 관계 수로 정렬 (내림차순)
+      sortedCards.sort((a, b) => getRelationCount(b.id) - getRelationCount(a.id));
+    } else {
+      // 특정 관계타입으로 정렬 (내림차순)
+      sortedCards.sort((a, b) =>
+        getRelationCountByType(b.id, sortByRelationType) - getRelationCountByType(a.id, sortByRelationType)
+      );
+    }
+
+    return sortedCards;
+  };
+
   useEffect(() => {
     loadCards();
+    loadAllRelations(); // 모든 관계 로드 추가
     // load cardtypes & relationtypes once
     (async () => {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -244,6 +295,15 @@ function Home() {
       setCardTypeInput('');
     }
   }, [currentCardId, cards, cardTypes]);
+
+  // 정렬 설정 변경 시 localStorage에 저장
+  useEffect(() => {
+    try {
+      localStorage.setItem('forneed-sort-relation-type', sortByRelationType);
+    } catch (error) {
+      console.warn('localStorage 저장 실패:', error);
+    }
+  }, [sortByRelationType]);
 
   const showToast = (msg: string) => {
     setToast(msg);
@@ -342,11 +402,12 @@ function Home() {
         target: targetId,
       })) as any;
       if (res.success) {
-        // relationTypeInput 유지
-        (document.getElementById('targetCardInput') as HTMLInputElement).value = '';
-        setOppModal({ show: false, typeName: '' });
-        await loadRelations(sourceId);
-        showToast('관계 생성 완료');
+                    // relationTypeInput 유지
+            (document.getElementById('targetCardInput') as HTMLInputElement).value = '';
+            setOppModal({ show: false, typeName: '' });
+            await loadRelations(sourceId);
+            await loadAllRelations(); // 모든 관계 목록도 새로고침
+            showToast('관계 생성 완료');
       }
     }
   };
@@ -442,6 +503,45 @@ function Home() {
     }
   };
 
+  // 관계 내보내기 텍스트 생성 함수
+  const generateExportText = async () => {
+    const res = await window.electron.ipcRenderer.invoke('get-relations') as any;
+    if(!res.success || res.data.length===0){
+      showToast('관계가 없습니다');
+      return '';
+    }
+
+    const relArr = res.data as any[];
+    const list = relArr.map(r=>`- ${r.source_title ?? r.source} ${r.typename} ${r.target_title ?? r.target}`).join('\n');
+
+    // 시간 정보 수집
+    const idSet = new Set<string>();
+    relArr.forEach(r=>{ idSet.add(r.source); idSet.add(r.target); });
+    const timeLines: string[] = [];
+    const legend = "ES: 빠르면 이때 시작 가능 | LS: 늦으면 이때 시작 가능 | 예정: 실제 시작/종료 예정일";
+
+    for(const id of idSet){
+      const det = await window.electron.ipcRenderer.invoke('get-card-detail',id) as any;
+      if(det.success){
+        const c = det.data;
+        const es = c.es?.slice(0,10);
+        const ls = c.ls?.slice(0,10);
+        const sd = c.startdate?.slice(0,10);
+        const ed = c.enddate?.slice(0,10);
+        const parts:string[]=[];
+        if(es) parts.push(`ES: ${es}`);
+        if(ls) parts.push(`LS: ${ls}`);
+        if(sd||ed){
+          const p = `예정: ${sd||''}${(sd&&ed)?'~':''}${ed||''}`;
+          parts.push(p);
+        }
+        if(parts.length) timeLines.push(`- ${c.title} | ${parts.join(' | ')}`);
+      }
+    }
+
+    return `아래 관계들을 검토하여 이 관계의 논리적 오류가 있는지 점검하고, 이를 기반으로 계획을 세워줘.\n\n전체 관계 목록 (총 ${relArr.length}건)\n${list}\n\n시간정보가 있는 카드 목록${timeLines.length?` (총 ${timeLines.length}건)`:''}\n${legend}\n${timeLines.join('\n')}`;
+  };
+
   // 카드 삭제 함수
   const deleteCard = async (id: string, title: string) => {
     if (!window.confirm(`${title} 카드를 삭제할까요?`)) return;
@@ -456,6 +556,7 @@ function Home() {
         setRelations([]);
       }
       loadCards();
+      loadAllRelations(); // 관계 목록도 새로고침
     }
   };
 
@@ -463,9 +564,28 @@ function Home() {
     <div style={{ display: 'flex', height: '100%', width: '100%' }}>
       {/* 좌측 카드 리스트 */}
       <aside style={{ width: 250, borderRight: '1px solid #ccc', overflowY: 'auto' }}>
-        <h3 style={{ padding: 12, margin: 0 }}>Cards</h3>
+        <div style={{ padding: 12, display: 'flex', alignItems: 'center', gap: 8 }}>
+          <h3 style={{ margin: 0, flex: 1 }}>Cards</h3>
+          <select
+            value={sortByRelationType}
+            onChange={(e) => setSortByRelationType(e.target.value)}
+            style={{ fontSize: 12, padding: '2px 4px' }}
+            title="관계타입별 정렬"
+          >
+            <option value="all">전체관계</option>
+            {relationTypes.map((rt) => (
+              <option key={rt.relationtype_id} value={rt.typename}>
+                {rt.typename}
+              </option>
+            ))}
+          </select>
+        </div>
         <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
-          {cards.map((c) => (
+          {getSortedCards().map((c) => {
+            const relationCount = sortByRelationType === 'all'
+              ? getRelationCount(c.id)
+              : getRelationCountByType(c.id, sortByRelationType);
+            return (
             <li
               key={c.id}
               style={{
@@ -478,14 +598,20 @@ function Home() {
               }}
               onClick={() => {setCardTitleInput(c.title); setCurrentCardId(c.id);} }
             >
-              <span style={{flex:1,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{c.title}</span>
+              <div style={{flex:1,overflow:'hidden',display:'flex',flexDirection:'column'}}>
+                <span style={{overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{c.title}</span>
+                <span style={{fontSize:'11px',color:'#888'}}>
+                  {sortByRelationType === 'all' ? `관계 ${relationCount}개` : `${sortByRelationType} ${relationCount}개`}
+                </span>
+              </div>
               <button
                 style={{padding:'0 6px'}}
                 onClick={(e)=>{e.stopPropagation(); deleteCard(c.id,c.title);}}
                 title="삭제"
               >✕</button>
             </li>
-          ))}
+            );
+          })}
         </ul>
       </aside>
 
@@ -603,43 +729,10 @@ function Home() {
           <button
             style={{width:'100%',padding:'10px 0',fontSize:16,fontWeight:600,background:'#555',color:'#fff',border:'none',borderRadius:4,cursor:'pointer'}}
             onClick={async()=>{
-              // 모든 관계 조회
-              const res = await window.electron.ipcRenderer.invoke('get-relations') as any;
-              if(!res.success || res.data.length===0){ showToast('관계가 없습니다'); return; }
-              const relArr = res.data as any[];
-              const list = relArr.map(r=>`- ${r.source_title ?? r.source} ${r.typename} ${r.target_title ?? r.target}`).join('\n');
-
-              // 시간 정보 수집
-              const idSet = new Set<string>();
-              relArr.forEach(r=>{ idSet.add(r.source); idSet.add(r.target); });
-              const timeLines: string[] = [];
-              const legend = "ES: 빠르면 이때 시작 가능 | LS: 늦으면 이때 시작 가능 | 예정: 실제 시작/종료 예정일";
-              for(const id of idSet){
-                // eslint-disable-next-line no-await-in-loop
-                const det = await window.electron.ipcRenderer.invoke('get-card-detail',id) as any;
-                if(det.success){
-                  const c = det.data;
-                  const es = c.es?.slice(0,10);
-                  const ls = c.ls?.slice(0,10);
-                  const sd = c.startdate?.slice(0,10);
-                  const ed = c.enddate?.slice(0,10);
-                  const parts:string[]=[];
-                  if(es) parts.push(`ES: ${es}`);
-                  if(ls) parts.push(`LS: ${ls}`);
-                  if(sd||ed){
-                    const p = `예정: ${sd||''}${(sd&&ed)?'~':''}${ed||''}`;
-                    parts.push(p);
-                  }
-                  if(parts.length) timeLines.push(`- ${c.title} | ${parts.join(' | ')}`);
-                }
-              }
-
-              const text = `아래 관계들을 검토하여 이 관계의 논리적 오류가 있는지 점검하고, 이를 기반으로 계획을 세워줘.\n\n전체 관계 목록 (총 ${relArr.length}건)\n${list}\n\n시간정보가 있는 카드 목록${timeLines.length?` (총 ${timeLines.length}건)`:''}\n${legend}\n${timeLines.join('\n')}`;
-              try{
-                await navigator.clipboard.writeText(text);
-                showToast('모든 관계가 클립보드에 복사되었습니다');
-              }catch(err){
-                showToast('클립보드 복사 실패');
+              const text = await generateExportText();
+              if (text) {
+                setExportText(text);
+                setShowExportModal(true);
               }
             }}
           >모든 관계 내보내기</button>
@@ -810,7 +903,8 @@ function Home() {
                 if (e.key === 'Enter') {
                   e.preventDefault();
                   // 확인 버튼 클릭과 동일한 로직 실행
-                  document.querySelector('.opposite-confirm-btn')?.click();
+                  const btn = document.querySelector('.opposite-confirm-btn') as HTMLButtonElement;
+                  if (btn) btn.click();
                 }
               }}
               placeholder="반대 관계명"
@@ -864,6 +958,7 @@ function Home() {
                         target:tgtId
                       });
                       await loadRelations(pendingRelation.sourceId);
+                      await loadAllRelations(); // 모든 관계 목록도 새로고침
                     }
                   }
 
@@ -876,6 +971,80 @@ function Home() {
                 }}
               >
                 확인
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* --- 관계 내보내기 모달 ---------------------------------- */}
+      {showExportModal && (
+        <div
+          style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            width: '100%',
+            height: '100%',
+            background: 'rgba(0,0,0,0.5)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 1000,
+          }}
+          onClick={() => setShowExportModal(false)}
+        >
+          <div
+            style={{
+              background: '#222',
+              padding: 24,
+              borderRadius: 8,
+              minWidth: '60%',
+              maxWidth: '80%',
+              maxHeight: '80%',
+              display: 'flex',
+              flexDirection: 'column'
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 style={{ marginTop: 0, marginBottom: 16 }}>관계 내보내기</h3>
+            <textarea
+              value={exportText}
+              onChange={(e) => setExportText(e.target.value)}
+              style={{
+                width: '100%',
+                minHeight: 300,
+                background: '#333',
+                color: '#fff',
+                border: '1px solid #555',
+                borderRadius: 4,
+                padding: 8,
+                fontSize: 14,
+                fontFamily: 'monospace',
+                resize: 'vertical'
+              }}
+              placeholder="내보낼 텍스트를 수정하세요..."
+            />
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 16 }}>
+              <button
+                onClick={() => setShowExportModal(false)}
+                style={{ padding: '8px 16px', background: '#666', color: '#fff', border: 'none', borderRadius: 4 }}
+              >
+                취소
+              </button>
+              <button
+                onClick={async () => {
+                  try {
+                    await navigator.clipboard.writeText(exportText);
+                    showToast('관계가 클립보드에 복사되었습니다');
+                    setShowExportModal(false);
+                  } catch (err) {
+                    showToast('클립보드 복사 실패');
+                  }
+                }}
+                style={{ padding: '8px 16px', background: '#0066cc', color: '#fff', border: 'none', borderRadius: 4 }}
+              >
+                클립보드에 복사
               </button>
             </div>
           </div>
@@ -1037,6 +1206,75 @@ function RelationTypeManage() {
   );
 }
 
+// 시각화 페이지
+function Visualization() {
+  const [activeTab, setActiveTab] = useState<'list' | 'graph' | 'calendar'>('list');
+
+  return (
+    <div style={{ padding: 20 }}>
+      <h2>시각화</h2>
+
+      {/* 탭 메뉴 */}
+      <div style={{
+        display: 'flex',
+        gap: 8,
+        marginBottom: 20,
+        borderBottom: '1px solid #ccc'
+      }}>
+        {[
+          { key: 'list', label: '리스트' },
+          { key: 'graph', label: '그래프뷰' },
+          { key: 'calendar', label: '캘린더' }
+        ].map((tab) => (
+          <button
+            key={tab.key}
+            onClick={() => setActiveTab(tab.key as any)}
+            style={{
+              padding: '10px 20px',
+              border: 'none',
+              borderBottom: activeTab === tab.key ? '2px solid #0066cc' : '2px solid transparent',
+              background: activeTab === tab.key ? '#f0f0f0' : 'transparent',
+              cursor: 'pointer',
+              fontSize: 14,
+              fontWeight: activeTab === tab.key ? 600 : 400,
+              color: activeTab === tab.key ? '#0066cc' : '#666'
+            }}
+          >
+            {tab.label}
+          </button>
+        ))}
+      </div>
+
+      {/* 탭 콘텐츠 */}
+      <div style={{ minHeight: 400 }}>
+        {activeTab === 'list' && (
+          <div>
+            <h3>리스트 뷰</h3>
+            <p style={{ color: '#666' }}>리스트 형태로 데이터를 표시하는 영역입니다.</p>
+            {/* 리스트 구현 예정 */}
+          </div>
+        )}
+
+        {activeTab === 'graph' && (
+          <div>
+            <h3>그래프 뷰</h3>
+            <p style={{ color: '#666' }}>그래프 형태로 관계를 시각화하는 영역입니다.</p>
+            {/* 그래프 구현 예정 */}
+          </div>
+        )}
+
+        {activeTab === 'calendar' && (
+          <div>
+            <h3>캘린더 뷰</h3>
+            <p style={{ color: '#666' }}>일정과 시간 정보를 캘린더로 표시하는 영역입니다.</p>
+            {/* 캘린더 구현 예정 */}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // 관계 관리 페이지
 function RelationManage() {
   const [relations,setRelations]=useState<any[]>([]);
@@ -1112,6 +1350,7 @@ export default function App() {
       <nav style={{ padding: 12, background: '#222' }}>
         {[
           { to: '/', label: '홈' },
+          { to: '/visualization', label: '시각화' },
           { to: '/cardtypes', label: '카드타입' },
           { to: '/relationtypes', label: '관계타입' },
           { to: '/relations', label: '관계' },
@@ -1128,6 +1367,7 @@ export default function App() {
 
       <Routes>
         <Route path="/" element={<Home />} />
+        <Route path="/visualization" element={<Visualization />} />
         <Route path="/cardtypes" element={<CardTypeManage />} />
         <Route path="/relationtypes" element={<RelationTypeManage />} />
         <Route path="/relations" element={<RelationManage />} />
