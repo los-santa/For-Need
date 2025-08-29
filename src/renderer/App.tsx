@@ -198,6 +198,27 @@ function Home() {
   // 관계 내보내기 모달
   const [showExportModal, setShowExportModal] = useState(false);
   const [exportText, setExportText] = useState('');
+  // 현재 관계 목록에서 선택된 인덱스
+  const [selectedRelationIndex, setSelectedRelationIndex] = useState<number>(-1);
+  const [isRelationListFocused, setIsRelationListFocused] = useState(false);
+  // 인라인 관계 추가 모드
+  const [isAddingRelation, setIsAddingRelation] = useState(false);
+  const [newRelationType, setNewRelationType] = useState('');
+  const [newTargetCard, setNewTargetCard] = useState('');
+
+  // 설정 관련 상태
+  const [showSettingsModal, setShowSettingsModal] = useState(false);
+  const [settings, setSettings] = useState({
+    confirmDelete: true,
+    exportTemplate: `아래 관계들을 검토하여 이 관계의 논리적 오류가 있는지 점검하고, 이를 기반으로 계획을 세워줘.
+
+전체 관계 목록 (총 {relationCount}건)
+{relationList}
+
+시간정보가 있는 카드 목록{timeCardsCount}
+{timeLegend}
+{timeLines}`
+  });
 
   const loadCards = async () => {
     const res = (await window.electron.ipcRenderer.invoke('get-cards')) as any;
@@ -304,6 +325,52 @@ function Home() {
       console.warn('localStorage 저장 실패:', error);
     }
   }, [sortByRelationType]);
+
+  // 관계 목록이 변경될 때 선택 상태 리셋
+  useEffect(() => {
+    if (!isAddingRelation) {
+      setSelectedRelationIndex(-1);
+    }
+  }, [relations, isAddingRelation]);
+
+  // 새로운 관계 추가 모드에서 Escape 키 핸들링
+  useEffect(() => {
+    const handleGlobalKeyDown = (e: KeyboardEvent) => {
+      if (isAddingRelation && e.key === 'Escape') {
+        setIsAddingRelation(false);
+        setNewRelationType('');
+        setNewTargetCard('');
+        setSelectedRelationIndex(-1);
+      }
+    };
+
+    if (isAddingRelation) {
+      document.addEventListener('keydown', handleGlobalKeyDown);
+      return () => document.removeEventListener('keydown', handleGlobalKeyDown);
+    }
+  }, [isAddingRelation]);
+
+  // 설정 불러오기
+  useEffect(() => {
+    try {
+      const savedSettings = localStorage.getItem('for-need-settings');
+      if (savedSettings) {
+        const parsed = JSON.parse(savedSettings);
+        setSettings(prev => ({ ...prev, ...parsed }));
+      }
+    } catch (error) {
+      console.warn('설정 불러오기 실패:', error);
+    }
+  }, []);
+
+  // 설정 저장하기
+  useEffect(() => {
+    try {
+      localStorage.setItem('for-need-settings', JSON.stringify(settings));
+    } catch (error) {
+      console.warn('설정 저장 실패:', error);
+    }
+  }, [settings]);
 
   const showToast = (msg: string) => {
     setToast(msg);
@@ -539,12 +606,224 @@ function Home() {
       }
     }
 
-    return `아래 관계들을 검토하여 이 관계의 논리적 오류가 있는지 점검하고, 이를 기반으로 계획을 세워줘.\n\n전체 관계 목록 (총 ${relArr.length}건)\n${list}\n\n시간정보가 있는 카드 목록${timeLines.length?` (총 ${timeLines.length}건)`:''}\n${legend}\n${timeLines.join('\n')}`;
+    // 설정의 템플릿 사용
+    const template = settings.exportTemplate
+      .replace('{relationCount}', relArr.length.toString())
+      .replace('{relationList}', list)
+      .replace('{timeCardsCount}', timeLines.length ? ` (총 ${timeLines.length}건)` : '')
+      .replace('{timeLegend}', legend)
+      .replace('{timeLines}', timeLines.join('\n'));
+
+    return template;
+  };
+
+    // 관계 목록 키보드 이벤트 핸들러
+  const handleRelationKeyDown = (e: React.KeyboardEvent) => {
+    // 입력 필드에서 오는 이벤트나 관계 추가 모드일 때는 무시
+    if ((e.target as HTMLElement).tagName === 'INPUT' || isAddingRelation) {
+      return;
+    }
+
+    const sortedRelations = relations.sort((a, b) => a.relationtype_id - b.relationtype_id);
+
+    if (e.key === 'Enter') {
+      if (e.metaKey || e.ctrlKey) {
+        // Cmd+Enter: 해당 카드로 이동
+        e.preventDefault();
+        if (selectedRelationIndex >= 0 && selectedRelationIndex < sortedRelations.length) {
+          const selectedRelation = sortedRelations[selectedRelationIndex];
+          const targetTitle = selectedRelation.target_title || selectedRelation.target;
+          setCardTitleInput(targetTitle);
+          setCurrentCardId(selectedRelation.target);
+          setSelectedRelationIndex(-1);
+          setIsRelationListFocused(false);
+        }
+      } else {
+        // Enter: 다음 관계로 이동하거나 새로운 관계 추가 모드 진입
+        e.preventDefault();
+        if (isAddingRelation) {
+          // 새로운 관계 저장
+          saveNewRelation();
+        } else if (selectedRelationIndex >= 0 && selectedRelationIndex < sortedRelations.length) {
+          // 다음 관계로 이동
+          if (selectedRelationIndex === sortedRelations.length - 1) {
+            // 마지막 관계에서 Enter 누르면 새로운 관계 추가 모드
+            setIsAddingRelation(true);
+            setSelectedRelationIndex(-1);
+            setNewRelationType(relationTypes[0]?.typename || '');
+            setNewTargetCard('');
+          } else {
+            setSelectedRelationIndex(prev => prev + 1);
+          }
+        } else if (relations.length === 0 || selectedRelationIndex === -1) {
+          // 관계가 없거나 선택된 것이 없으면 새로운 관계 추가 모드
+          setIsAddingRelation(true);
+          setNewRelationType(relationTypes[0]?.typename || '');
+          setNewTargetCard('');
+        }
+      }
+    } else if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      setSelectedRelationIndex(prev =>
+        prev < sortedRelations.length - 1 ? prev + 1 : 0
+      );
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      setSelectedRelationIndex(prev =>
+        prev > 0 ? prev - 1 : sortedRelations.length - 1
+      );
+        } else if (e.key === 'Tab') {
+      // Tab: 관계타입 순환 변경
+      e.preventDefault();
+      if (isAddingRelation) {
+        // 새로운 관계 추가 모드에서 관계타입 변경
+        const currentTypeIndex = relationTypes.findIndex(rt => rt.typename === newRelationType);
+        const nextTypeIndex = (currentTypeIndex + 1) % relationTypes.length;
+        setNewRelationType(relationTypes[nextTypeIndex]?.typename || '');
+      } else if (selectedRelationIndex >= 0 && selectedRelationIndex < sortedRelations.length) {
+        const selectedRelation = sortedRelations[selectedRelationIndex];
+        const currentTypeIndex = relationTypes.findIndex(rt => rt.relationtype_id === selectedRelation.relationtype_id);
+        const nextTypeIndex = (currentTypeIndex + 1) % relationTypes.length;
+        const nextRelationType = relationTypes[nextTypeIndex];
+
+        // 기존 관계 삭제 후 새로운 관계타입으로 다시 생성
+        changeRelationType(selectedRelation, nextRelationType.relationtype_id);
+      }
+    } else if (e.key === 'Delete' || e.key === 'Backspace') {
+      // Delete/Backspace: 선택된 관계 삭제
+      e.preventDefault();
+      if (!isAddingRelation && selectedRelationIndex >= 0 && selectedRelationIndex < sortedRelations.length) {
+        const selectedRelation = sortedRelations[selectedRelationIndex];
+        deleteRelation(selectedRelation);
+      }
+    } else if (e.key === 'Escape') {
+      e.preventDefault();
+      if (isAddingRelation) {
+        // 새로운 관계 추가 취소
+        setIsAddingRelation(false);
+        setNewRelationType('');
+        setNewTargetCard('');
+      } else {
+        setSelectedRelationIndex(-1);
+        setIsRelationListFocused(false);
+      }
+    }
+  };
+
+  // 새로운 관계 저장 함수
+  const saveNewRelation = async () => {
+    if (!currentCardId || !newRelationType.trim() || !newTargetCard.trim()) {
+      showToast('관계타입과 대상 카드를 입력하세요');
+      return;
+    }
+
+    try {
+      // 관계타입 ID 찾기
+      const relationType = relationTypes.find(rt => rt.typename === newRelationType);
+      if (!relationType) {
+        showToast('유효하지 않은 관계타입입니다');
+        return;
+      }
+
+      // 대상 카드 ID 찾기 또는 생성
+      let targetId = '';
+      const existingCard = cards.find(c => c.title === newTargetCard || c.id === newTargetCard);
+
+      if (existingCard) {
+        targetId = existingCard.id;
+      } else {
+        // 새 카드 생성
+        const createRes = await window.electron.ipcRenderer.invoke('create-card', { title: newTargetCard }) as any;
+        if (createRes.success) {
+          targetId = createRes.data.id;
+          await loadCards();
+        } else {
+          showToast('대상 카드 생성에 실패했습니다');
+          return;
+        }
+      }
+
+      // 관계 생성
+      const relationRes = await window.electron.ipcRenderer.invoke('create-relation', {
+        relationtype_id: relationType.relationtype_id,
+        source: currentCardId,
+        target: targetId
+      }) as any;
+
+            if (relationRes.success) {
+        // 성공 시 입력 필드만 초기화하고 추가 모드는 유지
+        setNewRelationType(relationTypes[0]?.typename || '');
+        setNewTargetCard('');
+
+        // 관계 목록 새로고침
+        await loadRelations(currentCardId);
+        await loadAllRelations();
+
+        showToast('새로운 관계가 추가되었습니다');
+
+        // 관계타입 입력 필드에 다시 포커스
+        setTimeout(() => {
+          const typeInput = document.querySelector('.relation-type-input') as HTMLInputElement;
+          if (typeInput) typeInput.focus();
+        }, 100);
+      } else {
+        showToast('관계 생성에 실패했습니다');
+      }
+    } catch (error) {
+      console.error('관계 저장 실패:', error);
+      showToast('관계 저장 중 오류가 발생했습니다');
+    }
+  };
+
+  // 관계 삭제 함수
+  const deleteRelation = async (relation: any) => {
+    try {
+      await window.electron.ipcRenderer.invoke('delete-relation', relation.relation_id);
+
+      // 관계 목록 새로고침
+      await loadRelations(currentCardId);
+      await loadAllRelations();
+
+      // 선택 인덱스 조정
+      setSelectedRelationIndex(prev => {
+        const newLength = relations.length - 1;
+        if (prev >= newLength) return Math.max(0, newLength - 1);
+        return prev;
+      });
+
+      showToast('관계가 삭제되었습니다');
+    } catch (error) {
+      console.error('관계 삭제 실패:', error);
+      showToast('관계 삭제에 실패했습니다');
+    }
+  };
+
+  // 관계타입 변경 함수
+  const changeRelationType = async (relation: any, newRelationTypeId: number) => {
+    try {
+      // 기존 관계 삭제
+      await window.electron.ipcRenderer.invoke('delete-relation', relation.relation_id);
+
+      // 새로운 관계 생성
+      await window.electron.ipcRenderer.invoke('create-relation', {
+        relationtype_id: newRelationTypeId,
+        source: currentCardId,
+        target: relation.target
+      });
+
+      // 관계 목록 새로고침
+      await loadRelations(currentCardId);
+      await loadAllRelations();
+      showToast('관계타입이 변경되었습니다');
+    } catch (error) {
+      console.error('관계타입 변경 실패:', error);
+      showToast('관계타입 변경에 실패했습니다');
+    }
   };
 
   // 카드 삭제 함수
   const deleteCard = async (id: string, title: string) => {
-    if (!window.confirm(`${title} 카드를 삭제할까요?`)) return;
+    if (settings.confirmDelete && !window.confirm(`${title} 카드를 삭제할까요?`)) return;
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const res = (await window.electron.ipcRenderer.invoke('delete-card', id)) as any;
     if (res.success) {
@@ -566,6 +845,22 @@ function Home() {
       <aside style={{ width: 250, borderRight: '1px solid #ccc', overflowY: 'auto' }}>
         <div style={{ padding: 12, display: 'flex', alignItems: 'center', gap: 8 }}>
           <h3 style={{ margin: 0, flex: 1 }}>Cards</h3>
+          <button
+            onClick={() => setShowSettingsModal(true)}
+            style={{
+              padding: '4px 8px',
+              fontSize: 14,
+              background: '#0066cc',
+              color: '#fff',
+              border: 'none',
+              borderRadius: 4,
+              cursor: 'pointer',
+              fontWeight: 'bold'
+            }}
+            title="설정"
+          >
+            설정
+          </button>
           <select
             value={sortByRelationType}
             onChange={(e) => setSortByRelationType(e.target.value)}
@@ -666,6 +961,10 @@ function Home() {
             placeholder="관계타입"
             className="editor-input"
             id="relationTypeInput"
+            onFocus={() => {
+              setIsRelationListFocused(false);
+              setSelectedRelationIndex(-1);
+            }}
           />
           <input
             list="cardOptions"
@@ -674,8 +973,13 @@ function Home() {
             id="targetCardInput"
             onKeyDown={(e)=>{
               if(e.key==='Enter'){
+                e.stopPropagation();
                 handleCreateRelation();
               }
+            }}
+            onFocus={() => {
+              setIsRelationListFocused(false);
+              setSelectedRelationIndex(-1);
             }}
           />
           <button
@@ -703,27 +1007,170 @@ function Home() {
         {/* 내보내기 버튼은 별도 섹션으로 이동 */}
 
         {/* 관계 목록 실제 표시 */}
-        <ul style={{marginTop:8,listStyle:'none',padding:0,maxHeight:160,overflowY:'auto',border:'1px solid #444'}}>
-          {relations.length===0 ? (
-            <li style={{padding:4,color:'#888'}}>관계가 없습니다</li>
-          ) : (
-            relations.sort((a, b) => a.relationtype_id - b.relationtype_id).map(r=> (
-              <li
-                key={r.relation_id}
-                style={{display:'flex',gap:12,padding:'2px 4px',borderBottom:'1px solid #333',cursor:'pointer'}}
-                title={`${r.target_title ?? r.target} 카드로 이동`}
-                onClick={()=>{
-                  const tgtTitle = r.target_title || r.target;
-                  setCardTitleInput(tgtTitle);
-                  setCurrentCardId(r.target);
-                }}
-              >
-                <span style={{fontWeight:600}}>{r.typename}</span>
-                <span style={{flex:1,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{r.target_title ?? r.target}</span>
-              </li>
-            ))
-          )}
-        </ul>
+        <div style={{marginTop:8}}>
+          <p style={{fontSize:12,color:'#888',margin:'0 0 4px 0'}}>
+            {isAddingRelation
+              ? 'Enter(저장→다음) | Tab(필드이동/관계타입변경) | Esc(추가종료)'
+              : 'Enter(다음/추가) | Cmd+Enter(이동) | Tab(관계타입변경) | Delete(삭제) | ↑↓(선택) | Esc(취소)'
+            }
+          </p>
+                    <ul
+            style={{
+              listStyle:'none',
+              padding:0,
+              maxHeight:160,
+              overflowY:'auto',
+              border:'1px solid #444',
+              outline: isRelationListFocused ? '2px solid #0066cc' : 'none',
+              cursor: 'pointer'
+            }}
+            tabIndex={!isAddingRelation ? 0 : -1}
+            onKeyDown={handleRelationKeyDown}
+            onFocus={() => {
+              setIsRelationListFocused(true);
+              if (relations.length > 0 && selectedRelationIndex === -1) {
+                setSelectedRelationIndex(0);
+              }
+            }}
+            onBlur={(e) => {
+              // 관계 목록 내부로 포커스가 이동하는 경우가 아닐 때만 blur 처리
+              if (!e.currentTarget.contains(e.relatedTarget as Node)) {
+                setIsRelationListFocused(false);
+                setSelectedRelationIndex(-1);
+              }
+            }}
+            onClick={() => {
+              if (!isRelationListFocused) {
+                setIsRelationListFocused(true);
+                if (relations.length > 0 && selectedRelationIndex === -1) {
+                  setSelectedRelationIndex(0);
+                }
+              }
+            }}
+          >
+            {relations.length===0 && !isAddingRelation ? (
+              <li style={{padding:4,color:'#888'}}>관계가 없습니다. Enter로 관계 추가</li>
+            ) : (
+              <>
+                {relations.sort((a, b) => a.relationtype_id - b.relationtype_id).map((r, index) => (
+                  <li
+                    key={r.relation_id}
+                    style={{
+                      display:'flex',
+                      gap:12,
+                      padding:'4px 8px',
+                      borderBottom:'1px solid #333',
+                      cursor:'pointer',
+                      background: selectedRelationIndex === index ? '#0066cc' : 'transparent',
+                      color: selectedRelationIndex === index ? '#fff' : 'inherit'
+                    }}
+                    title={`클릭하여 ${r.target_title ?? r.target} 카드로 이동`}
+                    onClick={()=>{
+                      const tgtTitle = r.target_title || r.target;
+                      setCardTitleInput(tgtTitle);
+                      setCurrentCardId(r.target);
+                    }}
+                    onMouseEnter={() => {
+                      if (isRelationListFocused && !isAddingRelation) {
+                        setSelectedRelationIndex(index);
+                      }
+                    }}
+                  >
+                    <span style={{
+                      fontWeight:600,
+                      minWidth: 60,
+                      opacity: selectedRelationIndex === index ? 1 : 0.9
+                    }}>
+                      {r.typename}
+                    </span>
+                    <span style={{
+                      flex:1,
+                      whiteSpace:'nowrap',
+                      overflow:'hidden',
+                      textOverflow:'ellipsis'
+                    }}>
+                      {r.target_title ?? r.target}
+                    </span>
+                    {selectedRelationIndex === index && !isAddingRelation && (
+                      <div style={{fontSize:10,opacity:0.8,display:'flex',flexDirection:'column',alignItems:'flex-end'}}>
+                        <span>Tab: 변경</span>
+                        <span>Del: 삭제</span>
+                      </div>
+                    )}
+                  </li>
+                ))}
+
+                {/* 새로운 관계 추가 모드 */}
+                {isAddingRelation && (
+                  <li style={{
+                    display:'flex',
+                    gap:8,
+                    padding:'4px 8px',
+                    borderBottom:'1px solid #333',
+                    background:'#1a4a1a',
+                    border: '1px solid #4CAF50'
+                  }}>
+                    <input
+                      className="relation-type-input"
+                      value={newRelationType}
+                      onChange={(e) => setNewRelationType(e.target.value)}
+                      style={{
+                        minWidth: 60,
+                        background: 'transparent',
+                        border: 'none',
+                        color: '#fff',
+                        fontWeight: 600,
+                        fontSize: 14,
+                        outline: 'none'
+                      }}
+                      placeholder="관계타입"
+                      autoFocus
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault();
+                          saveNewRelation();
+                        } else if (e.key === 'Tab') {
+                          e.preventDefault();
+                          // 대상 카드 입력으로 포커스 이동
+                          const targetInput = e.currentTarget.parentElement?.querySelector('input:last-of-type') as HTMLInputElement;
+                          if (targetInput) targetInput.focus();
+                        }
+                      }}
+                    />
+                    <input
+                      value={newTargetCard}
+                      onChange={(e) => setNewTargetCard(e.target.value)}
+                      style={{
+                        flex: 1,
+                        background: 'transparent',
+                        border: 'none',
+                        color: '#fff',
+                        fontSize: 14,
+                        outline: 'none'
+                      }}
+                      placeholder="대상 카드 제목"
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault();
+                          saveNewRelation();
+                        } else if (e.key === 'Tab') {
+                          e.preventDefault();
+                          // 관계타입 입력으로 포커스 이동
+                          const typeInput = e.currentTarget.parentElement?.querySelector('input:first-of-type') as HTMLInputElement;
+                          if (typeInput) typeInput.focus();
+                        }
+                      }}
+                    />
+                    <div style={{fontSize:10,color:'#4CAF50',display:'flex',flexDirection:'column',alignItems:'flex-end'}}>
+                      <span>Enter: 저장→다음</span>
+                      <span>Esc: 종료</span>
+                    </div>
+                  </li>
+                )}
+              </>
+            )}
+          </ul>
+        </div>
         {/* --- 모든 관계 내보내기 큰 버튼 ---------------------------------- */}
         <div style={{margin:'16px 0'}}>
           <button
@@ -1050,6 +1497,110 @@ function Home() {
           </div>
         </div>
       )}
+
+      {/* --- 설정 모달 ---------------------------------- */}
+      {showSettingsModal && (
+        <div
+          style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            width: '100%',
+            height: '100%',
+            background: 'rgba(0,0,0,0.5)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 1000,
+          }}
+          onClick={() => setShowSettingsModal(false)}
+        >
+          <div
+            style={{
+              background: '#222',
+              padding: 24,
+              borderRadius: 8,
+              minWidth: '60%',
+              maxWidth: '80%',
+              maxHeight: '80%',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 20
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 style={{ marginTop: 0, marginBottom: 0 }}>설정</h3>
+
+            {/* 카드 삭제 확인 설정 */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              <h4 style={{ margin: 0, fontSize: 16 }}>카드 삭제</h4>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
+                <input
+                  type="checkbox"
+                  checked={settings.confirmDelete}
+                  onChange={(e) => setSettings(prev => ({ ...prev, confirmDelete: e.target.checked }))}
+                />
+                <span>카드 삭제 시 확인창 표시</span>
+              </label>
+            </div>
+
+            {/* 내보내기 텍스트 템플릿 설정 */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              <h4 style={{ margin: 0, fontSize: 16 }}>내보내기 텍스트 템플릿</h4>
+              <p style={{ margin: 0, fontSize: 12, color: '#888' }}>
+                사용 가능한 변수: {'{relationCount}'}, {'{relationList}'}, {'{timeCardsCount}'}, {'{timeLegend}'}, {'{timeLines}'}
+              </p>
+              <textarea
+                value={settings.exportTemplate}
+                onChange={(e) => setSettings(prev => ({ ...prev, exportTemplate: e.target.value }))}
+                style={{
+                  width: '100%',
+                  minHeight: 200,
+                  background: '#333',
+                  color: '#fff',
+                  border: '1px solid #555',
+                  borderRadius: 4,
+                  padding: 8,
+                  fontSize: 14,
+                  fontFamily: 'monospace',
+                  resize: 'vertical'
+                }}
+                placeholder="내보내기 텍스트 템플릿을 입력하세요..."
+              />
+            </div>
+
+            {/* 버튼들 */}
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+              <button
+                onClick={() => {
+                  // 기본값으로 리셋
+                  setSettings({
+                    confirmDelete: true,
+                    exportTemplate: `아래 관계들을 검토하여 이 관계의 논리적 오류가 있는지 점검하고, 이를 기반으로 계획을 세워줘.
+
+전체 관계 목록 (총 {relationCount}건)
+{relationList}
+
+시간정보가 있는 카드 목록{timeCardsCount}
+{timeLegend}
+{timeLines}`
+                  });
+                  showToast('설정이 기본값으로 초기화되었습니다');
+                }}
+                style={{ padding: '8px 16px', background: '#666', color: '#fff', border: 'none', borderRadius: 4 }}
+              >
+                기본값 복원
+              </button>
+              <button
+                onClick={() => setShowSettingsModal(false)}
+                style={{ padding: '8px 16px', background: '#0066cc', color: '#fff', border: 'none', borderRadius: 4 }}
+              >
+                완료
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -1206,9 +1757,180 @@ function RelationTypeManage() {
   );
 }
 
+// 할일 항목 컴포넌트
+function TodoItem({
+  card,
+  cardTypes,
+  onToggleComplete
+}: {
+  card: any;
+  cardTypes: any[];
+  onToggleComplete: (cardId: string, currentComplete: boolean) => void;
+}) {
+  const cardType = cardTypes.find(ct => ct.cardtype_id === card.cardtype);
+  const isComplete = Boolean(card.complete);
+  const isOverdue = card.enddate && new Date(card.enddate) < new Date() && !isComplete;
+
+  // 우선순위 계산 (ES/LS 기반)
+  const getPriority = () => {
+    if (!card.es || !card.ls) return null;
+    const esDate = new Date(card.es);
+    const lsDate = new Date(card.ls);
+    const buffer = (lsDate.getTime() - esDate.getTime()) / (1000 * 60 * 60 * 24); // 일 단위
+
+    if (buffer <= 1) return '🔴 긴급';
+    if (buffer <= 3) return '🟡 중요';
+    return '🟢 여유';
+  };
+
+  return (
+    <div style={{
+      display: 'flex',
+      alignItems: 'flex-start',
+      gap: 12,
+      padding: '12px 16px',
+      background: isComplete ? '#f8f8f8' : '#fff',
+      border: `1px solid ${isOverdue ? '#ff6b6b' : '#e0e0e0'}`,
+      borderRadius: 8,
+      opacity: isComplete ? 0.7 : 1,
+      boxShadow: isComplete ? 'none' : '0 1px 3px rgba(0,0,0,0.1)'
+    }}>
+      {/* 체크박스 */}
+      <input
+        type="checkbox"
+        checked={isComplete}
+        onChange={() => onToggleComplete(card.id, isComplete)}
+        style={{
+          marginTop: 2,
+          width: 16,
+          height: 16,
+          cursor: 'pointer'
+        }}
+      />
+
+      {/* 할일 내용 */}
+      <div style={{ flex: 1, minWidth: 0 }}>
+        {/* 제목 */}
+        <div style={{
+          fontSize: 16,
+          fontWeight: 500,
+          textDecoration: isComplete ? 'line-through' : 'none',
+          color: isComplete ? '#888' : '#333',
+          marginBottom: 4
+        }}>
+          {card.title}
+        </div>
+
+        {/* 설명 */}
+        {card.content && (
+          <div style={{
+            fontSize: 14,
+            color: '#666',
+            marginBottom: 8,
+            whiteSpace: 'pre-wrap'
+          }}>
+            {card.content}
+          </div>
+        )}
+
+        {/* 메타 정보 */}
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, fontSize: 12 }}>
+          {/* 카드타입 */}
+          {cardType && (
+            <span style={{
+              background: '#e3f2fd',
+              color: '#1976d2',
+              padding: '2px 8px',
+              borderRadius: 12,
+              fontSize: 11
+            }}>
+              {cardType.cardtype_name}
+            </span>
+          )}
+
+          {/* 우선순위 */}
+          {getPriority() && (
+            <span style={{ color: '#666' }}>
+              {getPriority()}
+            </span>
+          )}
+
+          {/* 기간 */}
+          {card.duration && (
+            <span style={{ color: '#666' }}>
+              📅 {card.duration}일
+            </span>
+          )}
+
+          {/* 마감일 */}
+          {card.enddate && (
+            <span style={{
+              color: isOverdue ? '#ff6b6b' : '#666',
+              fontWeight: isOverdue ? 'bold' : 'normal'
+            }}>
+              ⏰ {card.enddate.slice(0, 10)}
+              {isOverdue && ' (지연)'}
+            </span>
+          )}
+
+          {/* 가격 */}
+          {card.price && (
+            <span style={{ color: '#666' }}>
+              💰 {card.price.toLocaleString('ko-KR')}원
+            </span>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // 시각화 페이지
 function Visualization() {
   const [activeTab, setActiveTab] = useState<'list' | 'graph' | 'calendar'>('list');
+  const [cards, setCards] = useState<any[]>([]);
+  const [cardTypes, setCardTypes] = useState<any[]>([]);
+
+  // 카드 및 카드타입 로드
+  useEffect(() => {
+    const loadData = async () => {
+      // 카드 로드
+      const cardsRes = await window.electron.ipcRenderer.invoke('get-cards') as any;
+      if (cardsRes.success) {
+        // 각 카드의 상세 정보 로드
+        const cardsWithDetails = await Promise.all(
+          cardsRes.data.map(async (card: any) => {
+            const detailRes = await window.electron.ipcRenderer.invoke('get-card-detail', card.id) as any;
+            return detailRes.success ? detailRes.data : card;
+          })
+        );
+        setCards(cardsWithDetails);
+      }
+
+      // 카드타입 로드
+      const typesRes = await window.electron.ipcRenderer.invoke('get-cardtypes') as any;
+      if (typesRes.success) {
+        setCardTypes(typesRes.data);
+      }
+    };
+
+    loadData();
+  }, []);
+
+  // 할일 완료 상태 토글
+  const toggleComplete = async (cardId: string, currentComplete: boolean) => {
+    const newComplete = currentComplete ? 0 : 1;
+    await window.electron.ipcRenderer.invoke('update-card-field', {
+      card_id: cardId,
+      field: 'complete',
+      value: newComplete
+    });
+
+    // 로컬 상태 업데이트
+    setCards(prev => prev.map(card =>
+      card.id === cardId ? { ...card, complete: newComplete } : card
+    ));
+  };
 
   return (
     <div style={{ padding: 20 }}>
@@ -1249,9 +1971,57 @@ function Visualization() {
       <div style={{ minHeight: 400 }}>
         {activeTab === 'list' && (
           <div>
-            <h3>리스트 뷰</h3>
-            <p style={{ color: '#666' }}>리스트 형태로 데이터를 표시하는 영역입니다.</p>
-            {/* 리스트 구현 예정 */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
+              <h3 style={{ margin: 0 }}>할일 목록</h3>
+              <div style={{ fontSize: 14, color: '#666' }}>
+                완료: {cards.filter(c => c.complete).length} / 전체: {cards.length}
+              </div>
+            </div>
+
+            {cards.length === 0 ? (
+              <p style={{ color: '#666', textAlign: 'center', padding: 40 }}>
+                할일이 없습니다. 홈에서 카드를 생성해보세요.
+              </p>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                {/* 미완료 할일들 */}
+                <div>
+                  <h4 style={{ margin: '0 0 12px 0', color: '#333', fontSize: 16 }}>
+                    🔥 해야할 일 ({cards.filter(c => !c.complete).length})
+                  </h4>
+                  {cards.filter(c => !c.complete).map(card => (
+                    <TodoItem
+                      key={card.id}
+                      card={card}
+                      cardTypes={cardTypes}
+                      onToggleComplete={toggleComplete}
+                    />
+                  ))}
+                  {cards.filter(c => !c.complete).length === 0 && (
+                    <p style={{ color: '#888', fontStyle: 'italic', marginLeft: 20 }}>
+                      모든 할일을 완료했습니다! 🎉
+                    </p>
+                  )}
+                </div>
+
+                {/* 완료된 할일들 */}
+                {cards.filter(c => c.complete).length > 0 && (
+                  <div style={{ marginTop: 24 }}>
+                    <h4 style={{ margin: '0 0 12px 0', color: '#666', fontSize: 16 }}>
+                      ✅ 완료된 일 ({cards.filter(c => c.complete).length})
+                    </h4>
+                    {cards.filter(c => c.complete).map(card => (
+                      <TodoItem
+                        key={card.id}
+                        card={card}
+                        cardTypes={cardTypes}
+                        onToggleComplete={toggleComplete}
+                      />
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         )}
 
