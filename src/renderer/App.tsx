@@ -579,7 +579,41 @@ function Home() {
     }
 
     const relArr = res.data as any[];
-    const list = relArr.map(r=>`- ${r.source_title ?? r.source} ${r.typename} ${r.target_title ?? r.target}`).join('\n');
+
+    // 같은 쌍의 관계들을 그룹화
+    const processedRelations = new Set<string>();
+    const relationGroups: string[] = [];
+
+    for (const rel of relArr) {
+      const relId = `${rel.source}-${rel.target}-${rel.relationtype_id}`;
+
+      if (processedRelations.has(relId)) continue;
+
+      // 현재 관계와 반대 방향 관계들 찾기
+      const pairRelations = relArr.filter(r =>
+        (r.source === rel.source && r.target === rel.target) ||
+        (r.source === rel.target && r.target === rel.source)
+      );
+
+      if (pairRelations.length > 1) {
+        // 쌍이 있는 경우: 그룹으로 묶기
+        const groupLines = pairRelations.map(r =>
+          `- ${r.source_title ?? r.source} ${r.typename} ${r.target_title ?? r.target}`
+        );
+        relationGroups.push(groupLines.join('\n'));
+
+        // 처리된 관계들 마킹
+        pairRelations.forEach(r => {
+          processedRelations.add(`${r.source}-${r.target}-${r.relationtype_id}`);
+        });
+      } else {
+        // 단독 관계
+        relationGroups.push(`- ${rel.source_title ?? rel.source} ${rel.typename} ${rel.target_title ?? rel.target}`);
+        processedRelations.add(relId);
+      }
+    }
+
+    const list = relationGroups.join('\n---\n');
 
     // 시간 정보 수집
     const idSet = new Set<string>();
@@ -1178,8 +1212,12 @@ function Home() {
             onClick={async()=>{
               const text = await generateExportText();
               if (text) {
-                setExportText(text);
-                setShowExportModal(true);
+                try {
+                  await navigator.clipboard.writeText(text);
+                  showToast('관계가 클립보드에 복사되었습니다');
+                } catch (err) {
+                  showToast('클립보드 복사 실패');
+                }
               }
             }}
           >모든 관계 내보내기</button>
@@ -1761,11 +1799,13 @@ function RelationTypeManage() {
 function TodoItem({
   card,
   cardTypes,
-  onToggleComplete
+  onToggleComplete,
+  onCardClick
 }: {
   card: any;
   cardTypes: any[];
   onToggleComplete: (cardId: string, currentComplete: boolean) => void;
+  onCardClick?: (cardId: string) => void;
 }) {
   const cardType = cardTypes.find(ct => ct.cardtype_id === card.cardtype);
   const isComplete = Boolean(card.complete);
@@ -1784,22 +1824,27 @@ function TodoItem({
   };
 
   return (
-    <div style={{
-      display: 'flex',
-      alignItems: 'flex-start',
-      gap: 12,
-      padding: '12px 16px',
-      background: isComplete ? '#f8f8f8' : '#fff',
-      border: `1px solid ${isOverdue ? '#ff6b6b' : '#e0e0e0'}`,
-      borderRadius: 8,
-      opacity: isComplete ? 0.7 : 1,
-      boxShadow: isComplete ? 'none' : '0 1px 3px rgba(0,0,0,0.1)'
-    }}>
+    <div
+      style={{
+        display: 'flex',
+        alignItems: 'flex-start',
+        gap: 12,
+        padding: '12px 16px',
+        background: isComplete ? '#f8f8f8' : '#fff',
+        border: `1px solid ${isOverdue ? '#ff6b6b' : '#e0e0e0'}`,
+        borderRadius: 8,
+        opacity: isComplete ? 0.7 : 1,
+        boxShadow: isComplete ? 'none' : '0 1px 3px rgba(0,0,0,0.1)',
+        cursor: onCardClick ? 'pointer' : 'default'
+      }}
+      onClick={() => onCardClick?.(card.id)}
+    >
       {/* 체크박스 */}
       <input
         type="checkbox"
         checked={isComplete}
         onChange={() => onToggleComplete(card.id, isComplete)}
+        onClick={(e) => e.stopPropagation()}
         style={{
           marginTop: 2,
           width: 16,
@@ -1890,6 +1935,10 @@ function Visualization() {
   const [activeTab, setActiveTab] = useState<'list' | 'graph' | 'calendar'>('list');
   const [cards, setCards] = useState<any[]>([]);
   const [cardTypes, setCardTypes] = useState<any[]>([]);
+  const [selectedCard, setSelectedCard] = useState<any>(null);
+  const [projects, setProjects] = useState<any[]>([]);
+  const [cardTypeInput, setCardTypeInput] = useState('');
+  const [toast, setToast] = useState('');
 
   // 카드 및 카드타입 로드
   useEffect(() => {
@@ -1912,10 +1961,88 @@ function Visualization() {
       if (typesRes.success) {
         setCardTypes(typesRes.data);
       }
+
+      // 프로젝트 로드
+      const projectsRes = await window.electron.ipcRenderer.invoke('get-projects') as any;
+      if (projectsRes.success) {
+        setProjects(projectsRes.data);
+      }
     };
 
     loadData();
   }, []);
+
+  // 토스트 메시지 표시
+  const showToast = (msg: string) => {
+    setToast(msg);
+    setTimeout(() => setToast(''), 3000);
+  };
+
+  // 카드 선택 핸들러
+  const handleCardSelect = async (cardId: string) => {
+    const detailRes = await window.electron.ipcRenderer.invoke('get-card-detail', cardId) as any;
+    if (detailRes.success) {
+      setSelectedCard(detailRes.data);
+      const cardType = cardTypes.find(ct => ct.cardtype_id === detailRes.data.cardtype);
+      setCardTypeInput(cardType?.cardtype_name || '');
+    }
+  };
+
+  // 카드 필드 업데이트
+  const updateCardField = async (field: string, value: any) => {
+    if (!selectedCard) return;
+
+    const res = await window.electron.ipcRenderer.invoke('update-card-field', {
+      card_id: selectedCard.id,
+      field,
+      value
+    }) as any;
+
+    if (res.success) {
+      setSelectedCard((prev: any) => ({ ...prev, [field]: value }));
+
+      // 리스트의 카드 정보도 업데이트
+      setCards(prev => prev.map(card =>
+        card.id === selectedCard.id ? { ...card, [field]: value } : card
+      ));
+
+      showToast(`${field} 업데이트 완료`);
+    } else {
+      showToast(`${field} 업데이트 실패`);
+    }
+  };
+
+  // 카드타입 저장
+  const saveCardType = async () => {
+    if (!selectedCard || !cardTypeInput.trim()) return;
+
+    try {
+      // 카드타입 ID 찾기 또는 생성
+      let cardTypeId = null;
+      const existingType = cardTypes.find(ct => ct.cardtype_name === cardTypeInput);
+
+      if (existingType) {
+        cardTypeId = existingType.cardtype_id;
+      } else {
+        // 새 카드타입 생성
+        const createRes = await window.electron.ipcRenderer.invoke('create-cardtype', { name: cardTypeInput });
+        if (createRes.success) {
+          cardTypeId = createRes.data.cardtype_id;
+          // 카드타입 목록 새로고침
+          const typesRes = await window.electron.ipcRenderer.invoke('get-cardtypes') as any;
+          if (typesRes.success) {
+            setCardTypes(typesRes.data);
+          }
+        }
+      }
+
+      if (cardTypeId) {
+        await updateCardField('cardtype', cardTypeId);
+      }
+    } catch (error) {
+      showToast('카드타입 저장 실패');
+    }
+  };
 
   // 할일 완료 상태 토글
   const toggleComplete = async (cardId: string, currentComplete: boolean) => {
@@ -1933,8 +2060,10 @@ function Visualization() {
   };
 
   return (
-    <div style={{ padding: 20 }}>
-      <h2>시각화</h2>
+    <div style={{ display: 'flex', height: '100%', width: '100%' }}>
+      {/* 좌측 메인 콘텐츠 */}
+      <div style={{ flex: 1, padding: 20, overflowY: 'auto' }}>
+        <h2>시각화</h2>
 
       {/* 탭 메뉴 */}
       <div style={{
@@ -1968,10 +2097,10 @@ function Visualization() {
       </div>
 
       {/* 탭 콘텐츠 */}
-      <div style={{ minHeight: 400 }}>
+      <div style={{ height: 500, display: 'flex', flexDirection: 'column' }}>
         {activeTab === 'list' && (
-          <div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
+          <div style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20, flexShrink: 0 }}>
               <h3 style={{ margin: 0 }}>할일 목록</h3>
               <div style={{ fontSize: 14, color: '#666' }}>
                 완료: {cards.filter(c => c.complete).length} / 전체: {cards.length}
@@ -1983,7 +2112,15 @@ function Visualization() {
                 할일이 없습니다. 홈에서 카드를 생성해보세요.
               </p>
             ) : (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              <div style={{
+                display: 'flex',
+                flexDirection: 'column',
+                gap: 8,
+                flex: 1,
+                overflowY: 'auto',
+                paddingRight: 8,
+                maxHeight: '100%'
+              }}>
                 {/* 미완료 할일들 */}
                 <div>
                   <h4 style={{ margin: '0 0 12px 0', color: '#333', fontSize: 16 }}>
@@ -1995,6 +2132,7 @@ function Visualization() {
                       card={card}
                       cardTypes={cardTypes}
                       onToggleComplete={toggleComplete}
+                      onCardClick={handleCardSelect}
                     />
                   ))}
                   {cards.filter(c => !c.complete).length === 0 && (
@@ -2016,6 +2154,7 @@ function Visualization() {
                         card={card}
                         cardTypes={cardTypes}
                         onToggleComplete={toggleComplete}
+                        onCardClick={handleCardSelect}
                       />
                     ))}
                   </div>
@@ -2026,7 +2165,7 @@ function Visualization() {
         )}
 
         {activeTab === 'graph' && (
-          <div>
+          <div style={{ height: '100%', overflowY: 'auto', paddingRight: 8 }}>
             <h3>그래프 뷰</h3>
             <p style={{ color: '#666' }}>그래프 형태로 관계를 시각화하는 영역입니다.</p>
             {/* 그래프 구현 예정 */}
@@ -2034,13 +2173,130 @@ function Visualization() {
         )}
 
         {activeTab === 'calendar' && (
-          <div>
+          <div style={{ height: '100%', overflowY: 'auto', paddingRight: 8 }}>
             <h3>캘린더 뷰</h3>
             <p style={{ color: '#666' }}>일정과 시간 정보를 캘린더로 표시하는 영역입니다.</p>
             {/* 캘린더 구현 예정 */}
           </div>
         )}
       </div>
+      </div>
+
+      {/* 우측 카드 세부사항 */}
+      <aside style={{ width: 300, borderLeft: '1px solid #ccc', overflowY: 'auto', padding: 20 }}>
+        <h3>카드 세부사항</h3>
+        {selectedCard ? (
+          <div style={{display:'flex',flexDirection:'column',gap:8}}>
+            <div><strong>ID:</strong> {selectedCard.id}</div>
+            <label style={{display:'flex',alignItems:'center',gap:8}}>
+              제목
+              <input className="editor-input" value={selectedCard.title} onChange={(e)=>updateCardField('title',e.target.value)} />
+            </label>
+
+            <label style={{display:'flex',alignItems:'center',gap:8}}>
+              내용
+              <textarea className="editor-input" value={selectedCard.content||''} onChange={(e)=>updateCardField('content',e.target.value)} rows={4} />
+            </label>
+
+            <label style={{display:'flex',alignItems:'center',gap:8}}>
+              카드타입
+              <input
+                list="cardTypeOptions"
+                className="editor-input"
+                value={cardTypeInput}
+                onChange={(e)=>setCardTypeInput(e.target.value)}
+                onBlur={saveCardType}
+                placeholder="카드타입"
+              />
+              <datalist id="cardTypeOptions">
+                {cardTypes.map((ct) => (
+                  <option key={ct.cardtype_id} value={ct.cardtype_name} />
+                ))}
+              </datalist>
+            </label>
+
+            <label style={{display:'flex',alignItems:'center',gap:8}}>
+              완료
+              <input type="checkbox" checked={Boolean(selectedCard.complete)} onChange={(e)=>updateCardField('complete',e.target.checked?1:0)} />
+            </label>
+
+            <label style={{display:'flex',alignItems:'center',gap:8}}>
+              활성화
+              <input type="checkbox" checked={Boolean(selectedCard.activate)} onChange={(e)=>updateCardField('activate',e.target.checked?1:0)} />
+            </label>
+
+            <label style={{display:'flex',alignItems:'center',gap:8}}>
+              기간(일)
+              <input className="editor-input" type="number" value={selectedCard.duration||''} onChange={(e)=>updateCardField('duration',e.target.value?Number(e.target.value):null)} />
+            </label>
+
+            <label style={{display:'flex',alignItems:'center',gap:8}}>
+              ES
+              <input className="editor-input" type="date" value={selectedCard.es?.slice(0,10)||''} onChange={(e)=>updateCardField('es',e.target.value)} />
+            </label>
+
+            <label style={{display:'flex',alignItems:'center',gap:8}}>
+              LS
+              <input className="editor-input" type="date" value={selectedCard.ls?.slice(0,10)||''} onChange={(e)=>updateCardField('ls',e.target.value)} />
+            </label>
+
+            <label style={{display:'flex',alignItems:'center',gap:8}}>
+              시작일
+              <input className="editor-input" type="date" value={selectedCard.startdate?.slice(0,10)||''} onChange={(e)=>updateCardField('startdate',e.target.value)} />
+            </label>
+
+            <label style={{display:'flex',alignItems:'center',gap:8}}>
+              종료일
+              <input className="editor-input" type="date" value={selectedCard.enddate?.slice(0,10)||''} onChange={(e)=>updateCardField('enddate',e.target.value)} />
+            </label>
+
+            <label style={{display:'flex',alignItems:'center',gap:8}}>
+              가격
+              <input
+                className="editor-input"
+                type="text"
+                value={selectedCard.price!==null && selectedCard.price!==undefined ? selectedCard.price.toLocaleString('ko-KR') : ''}
+                onChange={(e)=>{
+                  const raw=e.target.value.replace(/[^0-9]/g,'');
+                  updateCardField('price',raw?Number(raw):null);
+                }}
+              />
+              <span>원</span>
+            </label>
+
+            <label style={{display:'flex',alignItems:'center',gap:8}}>
+              프로젝트
+              <select className="editor-select" value={selectedCard.project_id||''} onChange={(e)=>updateCardField('project_id',e.target.value||null)}>
+                <option value="">(없음)</option>
+                {projects.map(p=>(<option key={p.project_id} value={p.project_id}>{p.project_name}</option>))}
+              </select>
+            </label>
+
+            <div><strong>생성일:</strong> {selectedCard.createdat}</div>
+          </div>
+        ) : (
+          <p style={{color:'#666',textAlign:'center'}}>카드를 선택하면 세부사항이 표시됩니다.</p>
+        )}
+      </aside>
+
+      {/* 토스트 */}
+      {toast && (
+        <div
+          style={{
+            position: 'fixed',
+            bottom: 20,
+            left: '50%',
+            transform: 'translateX(-50%)',
+            background: '#333',
+            color: '#fff',
+            padding: '8px 16px',
+            borderRadius: 6,
+            zIndex: 9999,
+          }}
+        >
+          {toast}
+        </div>
+      )}
     </div>
   );
 }
