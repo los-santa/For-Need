@@ -146,11 +146,15 @@ ipcMain.handle('create-card', async (_, payload: { title: string; project_id?: s
       return { success: false, error: 'duplicate-title' };
     }
 
+    // 'todo' 카드타입 ID 가져오기
+    const todoCardType = db.prepare("SELECT cardtype_id FROM CARDTYPES WHERE cardtype_name = 'todo'").get() as any;
+    const defaultCardTypeId = todoCardType ? todoCardType.cardtype_id : null;
+
     const id = randomUUID();
     const now = new Date().toISOString();
     db.prepare(
-      `INSERT INTO CARDS (id, project_id, title, createdat) VALUES (?, ?, ?, ?)`,
-    ).run(id, payload.project_id ?? null, title, now);
+      `INSERT INTO CARDS (id, project_id, title, cardtype, createdat) VALUES (?, ?, ?, ?, ?)`,
+    ).run(id, payload.project_id ?? null, title, defaultCardTypeId, now);
     return { success: true, data: { id } };
   } catch (error) {
     log.error('Failed to create card:', error);
@@ -493,6 +497,177 @@ ipcMain.handle('delete-card', async (_, card_id: string) => {
   } catch (error) {
     log.error('Failed to delete card:', error);
     return { success: false, error: 'Failed to delete card' };
+  }
+});
+
+// ------------------------------------------------------------------
+// Alias Management
+// ------------------------------------------------------------------
+
+// 모든 별칭 조회
+ipcMain.handle('get-aliases', async () => {
+  try {
+    const aliases = db.prepare('SELECT * FROM ALIAS ORDER BY alias_name').all();
+    return { success: true, data: aliases };
+  } catch (error) {
+    log.error('Failed to get aliases:', error);
+    return { success: false, error: 'Failed to get aliases' };
+  }
+});
+
+// 새 별칭 생성
+ipcMain.handle('create-alias', async (_, payload: { alias_name: string }) => {
+  try {
+    const now = new Date().toISOString();
+    const aliasName = payload.alias_name.trim();
+
+    if (!aliasName) {
+      return { success: false, error: 'Alias name is required' };
+    }
+
+    const result = db.prepare('INSERT INTO ALIAS (alias_name, createdat) VALUES (?, ?)')
+      .run(aliasName, now);
+
+    return { success: true, data: { alias_id: result.lastInsertRowid, alias_name: aliasName } };
+  } catch (error) {
+    if (error.code === 'SQLITE_CONSTRAINT_UNIQUE') {
+      // 이미 존재하는 별칭인 경우 해당 별칭 정보 반환
+      const existing = db.prepare('SELECT * FROM ALIAS WHERE alias_name = ?').get(payload.alias_name.trim());
+      return { success: true, data: existing };
+    }
+    log.error('Failed to create alias:', error);
+    return { success: false, error: 'Failed to create alias' };
+  }
+});
+
+// 특정 카드의 모든 별칭 조회
+ipcMain.handle('get-card-aliases', async (_, card_id: string) => {
+  try {
+    const results = db.prepare(`
+      SELECT a.alias_id, a.alias_name, ca.createdat as assigned_at
+      FROM CURRENT_ALIAS ca
+      JOIN ALIAS a ON ca.alias_id = a.alias_id
+      WHERE ca.card_id = ?
+      ORDER BY a.alias_name
+    `).all(card_id);
+
+    return { success: true, data: results };
+  } catch (error) {
+    log.error('Failed to get card aliases:', error);
+    return { success: false, error: 'Failed to get card aliases' };
+  }
+});
+
+// 기존 호환성을 위한 별칭 (단일 별칭만 반환)
+ipcMain.handle('get-card-alias', async (_, card_id: string) => {
+  try {
+    const result = db.prepare(`
+      SELECT a.alias_id, a.alias_name, ca.createdat as assigned_at
+      FROM CURRENT_ALIAS ca
+      JOIN ALIAS a ON ca.alias_id = a.alias_id
+      WHERE ca.card_id = ?
+      ORDER BY ca.createdat
+      LIMIT 1
+    `).get(card_id);
+
+    return { success: true, data: result || null };
+  } catch (error) {
+    log.error('Failed to get card alias:', error);
+    return { success: false, error: 'Failed to get card alias' };
+  }
+});
+
+// 카드에 별칭 설정
+ipcMain.handle('set-card-alias', async (_, payload: { card_id: string; alias_name: string }) => {
+  try {
+    const { card_id, alias_name } = payload;
+    const now = new Date().toISOString();
+
+    if (!alias_name.trim()) {
+      // 빈 별칭이면 기존 별칭 제거
+      db.prepare('DELETE FROM CURRENT_ALIAS WHERE card_id = ?').run(card_id);
+      return { success: true, data: null };
+    }
+
+    // 별칭이 존재하는지 확인, 없으면 생성
+    let alias = db.prepare('SELECT * FROM ALIAS WHERE alias_name = ?').get(alias_name.trim());
+    if (!alias) {
+      const result = db.prepare('INSERT INTO ALIAS (alias_name, createdat) VALUES (?, ?)')
+        .run(alias_name.trim(), now);
+      alias = { alias_id: result.lastInsertRowid, alias_name: alias_name.trim(), createdat: now };
+    }
+
+    // 카드에 별칭 할당 (REPLACE로 기존 별칭 덮어쓰기)
+    db.prepare('REPLACE INTO CURRENT_ALIAS (card_id, alias_id, createdat) VALUES (?, ?, ?)')
+      .run(card_id, alias.alias_id, now);
+
+    return { success: true, data: alias };
+  } catch (error) {
+    log.error('Failed to set card alias:', error);
+    return { success: false, error: 'Failed to set card alias' };
+  }
+});
+
+// 카드에 새 별칭 추가
+ipcMain.handle('add-card-alias', async (_, payload: { card_id: string; alias_name: string }) => {
+  try {
+    const { card_id, alias_name } = payload;
+    const now = new Date().toISOString();
+
+    if (!alias_name.trim()) {
+      return { success: false, error: 'Alias name is required' };
+    }
+
+    // 별칭이 존재하는지 확인, 없으면 생성
+    let alias = db.prepare('SELECT * FROM ALIAS WHERE alias_name = ?').get(alias_name.trim());
+    if (!alias) {
+      const result = db.prepare('INSERT INTO ALIAS (alias_name, createdat) VALUES (?, ?)')
+        .run(alias_name.trim(), now);
+      alias = { alias_id: result.lastInsertRowid, alias_name: alias_name.trim(), createdat: now };
+    }
+
+    // 이미 해당 카드에 이 별칭이 있는지 확인
+    const existing = db.prepare('SELECT * FROM CURRENT_ALIAS WHERE card_id = ? AND alias_id = ?')
+      .get(card_id, alias.alias_id);
+
+    if (existing) {
+      return { success: false, error: 'duplicate', message: '이미 있는 별칭입니다.' };
+    }
+
+    // 카드에 별칭 추가
+    db.prepare('INSERT INTO CURRENT_ALIAS (card_id, alias_id, createdat) VALUES (?, ?, ?)')
+      .run(card_id, alias.alias_id, now);
+
+    return { success: true, data: alias };
+  } catch (error) {
+    log.error('Failed to add card alias:', error);
+    return { success: false, error: 'Failed to add card alias' };
+  }
+});
+
+// 카드에서 특정 별칭 제거
+ipcMain.handle('remove-card-alias', async (_, payload: { card_id: string; alias_id: number }) => {
+  try {
+    const { card_id, alias_id } = payload;
+
+    db.prepare('DELETE FROM CURRENT_ALIAS WHERE card_id = ? AND alias_id = ?')
+      .run(card_id, alias_id);
+
+    return { success: true };
+  } catch (error) {
+    log.error('Failed to remove card alias:', error);
+    return { success: false, error: 'Failed to remove card alias' };
+  }
+});
+
+// 카드의 모든 별칭 제거 (기존 호환성)
+ipcMain.handle('delete-card-alias', async (_, card_id: string) => {
+  try {
+    db.prepare('DELETE FROM CURRENT_ALIAS WHERE card_id = ?').run(card_id);
+    return { success: true };
+  } catch (error) {
+    log.error('Failed to delete card alias:', error);
+    return { success: false, error: 'Failed to delete card alias' };
   }
 });
 

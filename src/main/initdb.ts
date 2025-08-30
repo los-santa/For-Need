@@ -32,7 +32,7 @@ db.exec(`
 `);
 
 // 기본 카드타입 데이터 삽입 (존재하지 않을 때만)
-const defaultTypes = ['entity','habit','action','destination','IF'];
+const defaultTypes = ['todo','entity','habit','action','destination','IF'];
 defaultTypes.forEach(name=>{
   db.prepare("INSERT OR IGNORE INTO CARDTYPES (cardtype_name, createdat) VALUES (?, datetime('now'))").run(name);
 });
@@ -103,5 +103,85 @@ db.exec(`
   (3, 'before', 'after'),
   (4, 'after', 'before')
 `);
+
+// 별칭 테이블 생성
+db.exec(`
+  CREATE TABLE IF NOT EXISTS ALIAS (
+    alias_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    alias_name TEXT UNIQUE NOT NULL,
+    createdat TEXT
+  )
+`);
+
+// 현재 별칭 테이블 마이그레이션 (여러 별칭 지원)
+try {
+  // 기존 테이블 구조 확인
+  const tableInfo = db.prepare("PRAGMA table_info(CURRENT_ALIAS)").all();
+  const hasPrimaryKeyConstraint = tableInfo.some((col: any) => col.pk === 1 && col.name === 'card_id');
+
+  if (hasPrimaryKeyConstraint) {
+    console.log('Migrating CURRENT_ALIAS table to support multiple aliases...');
+
+    // 기존 데이터 백업
+    const existingData = db.prepare('SELECT * FROM CURRENT_ALIAS').all();
+
+    // 기존 테이블 삭제 후 새로 생성
+    db.exec('DROP TABLE IF EXISTS CURRENT_ALIAS');
+    db.exec(`
+      CREATE TABLE CURRENT_ALIAS (
+        card_id TEXT NOT NULL,
+        alias_id INTEGER NOT NULL,
+        createdat TEXT,
+        PRIMARY KEY (card_id, alias_id),
+        FOREIGN KEY (card_id) REFERENCES CARDS(id) ON DELETE CASCADE,
+        FOREIGN KEY (alias_id) REFERENCES ALIAS(alias_id) ON DELETE CASCADE
+      )
+    `);
+
+    // 기존 데이터 복원
+    if (existingData.length > 0) {
+      const insertStmt = db.prepare('INSERT INTO CURRENT_ALIAS (card_id, alias_id, createdat) VALUES (?, ?, ?)');
+      for (const row of existingData) {
+        insertStmt.run(row.card_id, row.alias_id, row.createdat);
+      }
+    }
+
+    console.log('CURRENT_ALIAS table migration completed');
+  }
+} catch (error) {
+  console.log('Creating new CURRENT_ALIAS table...');
+}
+
+// 현재 별칭 테이블 생성 (카드별 현재 사용 중인 별칭들 - 여러 개 지원)
+db.exec(`
+  CREATE TABLE IF NOT EXISTS CURRENT_ALIAS (
+    card_id TEXT NOT NULL,
+    alias_id INTEGER NOT NULL,
+    createdat TEXT,
+    PRIMARY KEY (card_id, alias_id),
+    FOREIGN KEY (card_id) REFERENCES CARDS(id) ON DELETE CASCADE,
+    FOREIGN KEY (alias_id) REFERENCES ALIAS(alias_id) ON DELETE CASCADE
+  )
+`);
+
+// 기존 카드들을 'todo' 카드타입으로 마이그레이션
+try {
+  console.log('Migrating existing cards to todo cardtype...');
+
+  // 'todo' 카드타입 ID 가져오기
+  const todoCardType = db.prepare("SELECT cardtype_id FROM CARDTYPES WHERE cardtype_name = 'todo'").get() as any;
+
+  if (todoCardType) {
+    // 카드타입이 NULL이거나 다른 카드타입인 모든 카드를 'todo'로 업데이트
+    const updateResult = db.prepare("UPDATE CARDS SET cardtype = ? WHERE cardtype IS NULL OR cardtype != ?")
+      .run(todoCardType.cardtype_id, todoCardType.cardtype_id);
+
+    if (updateResult.changes > 0) {
+      console.log(`Updated ${updateResult.changes} cards to 'todo' cardtype`);
+    }
+  }
+} catch (error) {
+  console.log('Card migration error:', error);
+}
 
 export default db;

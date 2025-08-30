@@ -220,6 +220,21 @@ function Home() {
 {timeLines}`
   });
 
+  // 별칭 관련 상태
+  const [aliases, setAliases] = useState<any[]>([]);
+  const [cardAliases, setCardAliases] = useState<any[]>([]);
+  const [aliasInput, setAliasInput] = useState('');
+
+  // 자동완성 관련 상태
+  const [sourceCardInput, setSourceCardInput] = useState('');
+  const [targetCardInput, setTargetCardInput] = useState('');
+  const [sourceDropdownVisible, setSourceDropdownVisible] = useState(false);
+  const [targetDropdownVisible, setTargetDropdownVisible] = useState(false);
+  const [sourceSelectedIndex, setSourceSelectedIndex] = useState(-1);
+  const [targetSelectedIndex, setTargetSelectedIndex] = useState(-1);
+  const [filteredSourceCards, setFilteredSourceCards] = useState<any[]>([]);
+  const [filteredTargetCards, setFilteredTargetCards] = useState<any[]>([]);
+
   const loadCards = async () => {
     const res = (await window.electron.ipcRenderer.invoke('get-cards')) as any;
     if (res.success) {
@@ -243,6 +258,169 @@ function Home() {
     const res = (await window.electron.ipcRenderer.invoke('get-relations')) as any;
     if (res.success) {
       setAllRelations(res.data);
+    }
+  };
+
+  // 별칭 관련 함수들
+  const loadAliases = async () => {
+    const res = (await window.electron.ipcRenderer.invoke('get-aliases')) as any;
+    if (res.success) {
+      setAliases(res.data);
+    }
+  };
+
+    const loadCardAliases = async (cardId: string) => {
+    const res = (await window.electron.ipcRenderer.invoke('get-card-aliases', cardId)) as any;
+    if (res.success) {
+      setCardAliases(res.data);
+    }
+  };
+
+  const addCardAlias = async () => {
+    if (!currentCardId || !aliasInput.trim()) return;
+
+    const res = (await window.electron.ipcRenderer.invoke('add-card-alias', {
+      card_id: currentCardId,
+      alias_name: aliasInput.trim()
+    })) as any;
+
+    if (res.success) {
+      await loadCardAliases(currentCardId);
+      await loadAliases(); // 새 별칭이 생성되었을 수 있으므로 목록 새로고침
+      setAliasInput(''); // 입력 필드 초기화
+      showToast('별칭이 추가되었습니다');
+    } else if (res.error === 'duplicate') {
+      showToast(res.message || '이미 있는 별칭입니다');
+    } else {
+      showToast('별칭 추가에 실패했습니다');
+    }
+  };
+
+    const removeCardAlias = async (aliasId: number) => {
+    if (!currentCardId) return;
+
+    const res = (await window.electron.ipcRenderer.invoke('remove-card-alias', {
+      card_id: currentCardId,
+      alias_id: aliasId
+    })) as any;
+
+    if (res.success) {
+      await loadCardAliases(currentCardId);
+      showToast('별칭이 제거되었습니다');
+    } else {
+      showToast('별칭 제거에 실패했습니다');
+    }
+  };
+
+  // 자동완성 관련 함수들
+  const filterCards = (inputValue: string) => {
+    if (!inputValue.trim()) return [];
+    return cards.filter(card =>
+      card.title.toLowerCase().includes(inputValue.toLowerCase())
+    ).slice(0, 10); // 최대 10개까지만 표시
+  };
+
+  const handleSourceCardInputChange = (value: string) => {
+    setSourceCardInput(value);
+    const filtered = filterCards(value);
+    setFilteredSourceCards(filtered);
+    setSourceDropdownVisible(filtered.length > 0);
+    setSourceSelectedIndex(-1);
+  };
+
+  const handleTargetCardInputChange = (value: string) => {
+    setTargetCardInput(value);
+    const filtered = filterCards(value);
+    setFilteredTargetCards(filtered);
+    setTargetDropdownVisible(filtered.length > 0);
+    setTargetSelectedIndex(-1);
+  };
+
+  const selectSourceCard = (card: any) => {
+    setSourceCardInput(card.title);
+    setSourceDropdownVisible(false);
+    setSourceSelectedIndex(-1);
+    // Source card 선택 시 currentCardId 업데이트
+    setCurrentCardId(card.id);
+    setCardTitleInput(card.title);
+  };
+
+  const selectTargetCard = (card: any) => {
+    setTargetCardInput(card.title);
+    setTargetDropdownVisible(false);
+    setTargetSelectedIndex(-1);
+  };
+
+  const handleSourceKeyDown = (e: React.KeyboardEvent) => {
+    if (!sourceDropdownVisible) return;
+
+    switch (e.key) {
+      case 'ArrowDown':
+        e.preventDefault();
+        setSourceSelectedIndex(prev =>
+          prev < filteredSourceCards.length - 1 ? prev + 1 : 0
+        );
+        break;
+      case 'ArrowUp':
+        e.preventDefault();
+        setSourceSelectedIndex(prev =>
+          prev > 0 ? prev - 1 : filteredSourceCards.length - 1
+        );
+        break;
+      case 'Tab':
+        e.preventDefault();
+        setSourceSelectedIndex(prev =>
+          prev < filteredSourceCards.length - 1 ? prev + 1 : 0
+        );
+        break;
+      case 'Enter':
+        e.preventDefault();
+        if (sourceSelectedIndex >= 0 && sourceSelectedIndex < filteredSourceCards.length) {
+          selectSourceCard(filteredSourceCards[sourceSelectedIndex]);
+        }
+        break;
+      case 'Escape':
+        setSourceDropdownVisible(false);
+        setSourceSelectedIndex(-1);
+        break;
+    }
+  };
+
+  const handleTargetKeyDown = (e: React.KeyboardEvent) => {
+    if (!targetDropdownVisible) return;
+
+    switch (e.key) {
+      case 'ArrowDown':
+        e.preventDefault();
+        setTargetSelectedIndex(prev =>
+          prev < filteredTargetCards.length - 1 ? prev + 1 : 0
+        );
+        break;
+      case 'ArrowUp':
+        e.preventDefault();
+        setTargetSelectedIndex(prev =>
+          prev > 0 ? prev - 1 : filteredTargetCards.length - 1
+        );
+        break;
+      case 'Tab':
+        e.preventDefault();
+        setTargetSelectedIndex(prev =>
+          prev < filteredTargetCards.length - 1 ? prev + 1 : 0
+        );
+        break;
+      case 'Enter':
+        e.preventDefault();
+        if (targetSelectedIndex >= 0 && targetSelectedIndex < filteredTargetCards.length) {
+          selectTargetCard(filteredTargetCards[targetSelectedIndex]);
+        } else {
+          // 선택된 항목이 없으면 관계 생성 실행
+          handleCreateRelation();
+        }
+        break;
+      case 'Escape':
+        setTargetDropdownVisible(false);
+        setTargetSelectedIndex(-1);
+        break;
     }
   };
 
@@ -279,6 +457,7 @@ function Home() {
   useEffect(() => {
     loadCards();
     loadAllRelations(); // 모든 관계 로드 추가
+    loadAliases(); // 별칭 로드 추가
     // load cardtypes & relationtypes once
     (async () => {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -297,11 +476,20 @@ function Home() {
     if (currentCardId) {
       loadRelations(currentCardId);
       loadCardDetail(currentCardId);
+      loadCardAliases(currentCardId); // 별칭들 로드 추가
+      // 현재 카드의 제목으로 소스 카드 입력 동기화
+      const currentCard = cards.find(c => c.id === currentCardId);
+      if (currentCard) {
+        setSourceCardInput(currentCard.title);
+      }
     } else {
       setRelations([]);
       setCardDetail(null);
+      setCardAliases([]); // 별칭들 초기화
+      setAliasInput('');
+      setSourceCardInput(''); // 소스 카드 입력 초기화
     }
-  }, [currentCardId]);
+  }, [currentCardId, cards]);
 
   useEffect(() => {
     if (currentCardId) {
@@ -404,11 +592,11 @@ function Home() {
   // ------------------------------------------------------------
   const handleCreateRelation = async () => {
     // ------------------------------------------------
-    // source card 확보 (제목 입력칸 기준)
+    // source card 확보 (새로운 자동완성 입력 기준)
     // ------------------------------------------------
-    const sourceTitle = cardTitleInput.trim();
+    const sourceTitle = sourceCardInput.trim() || cardTitleInput.trim();
     if (!sourceTitle) {
-      showToast('먼저 카드 제목을 입력하세요');
+      showToast('먼저 소스 카드를 입력하세요');
       return;
     }
 
@@ -444,18 +632,23 @@ function Home() {
       // 관계 타입이 없으면 모달을 띄워 반대 관계명을 입력받고, 이후 자동으로 이어서 처리
       setOppModal({ show: true, typeName: relationTypeInput });
       // 관계 생성 재호출을 위해 정보 보관
-      setPendingRelation({sourceId, targetTitle: (document.getElementById('targetCardInput') as HTMLInputElement).value.trim(), relTypeName: relationTypeInput});
+      setPendingRelation({sourceId, targetTitle: targetCardInput.trim(), relTypeName: relationTypeInput});
       return;
     }
 
     // target card id 확보
-    const targetCardInput = (document.getElementById('targetCardInput') as HTMLInputElement).value.trim();
+    const targetTitle = targetCardInput.trim();
+    if (!targetTitle) {
+      showToast('대상 카드를 입력하세요');
+      return;
+    }
+
     let targetId: string | undefined;
-    const cardExists = cards.find((c) => c.title === targetCardInput || c.id === targetCardInput);
+    const cardExists = cards.find((c) => c.title === targetTitle || c.id === targetTitle);
     if (cardExists) {
       targetId = cardExists.id;
     } else {
-      const res = (await window.electron.ipcRenderer.invoke('create-card', { title: targetCardInput })) as any;
+      const res = (await window.electron.ipcRenderer.invoke('create-card', { title: targetTitle })) as any;
       if (res.success) {
         targetId = res.data.id;
         await loadCards();
@@ -469,12 +662,14 @@ function Home() {
         target: targetId,
       })) as any;
       if (res.success) {
-                    // relationTypeInput 유지
-            (document.getElementById('targetCardInput') as HTMLInputElement).value = '';
-            setOppModal({ show: false, typeName: '' });
-            await loadRelations(sourceId);
-            await loadAllRelations(); // 모든 관계 목록도 새로고침
-            showToast('관계 생성 완료');
+        // relationTypeInput 유지
+        setTargetCardInput('');
+        setTargetDropdownVisible(false);
+        setTargetSelectedIndex(-1);
+        setOppModal({ show: false, typeName: '' });
+        await loadRelations(sourceId);
+        await loadAllRelations(); // 모든 관계 목록도 새로고침
+        showToast('관계 생성 완료');
       }
     }
   };
@@ -990,6 +1185,61 @@ function Home() {
 
         {/* 관계 생성 영역 */}
         <div className="editor-row">
+          {/* 소스 카드 자동완성 */}
+          <div style={{ position: 'relative', flex: 1 }}>
+            <input
+              placeholder="소스 카드 (현재: 카드 제목)"
+              className="editor-input"
+              value={sourceCardInput}
+              onChange={(e) => handleSourceCardInputChange(e.target.value)}
+              onKeyDown={handleSourceKeyDown}
+              onFocus={() => {
+                setIsRelationListFocused(false);
+                setSelectedRelationIndex(-1);
+                if (sourceCardInput && !sourceDropdownVisible) {
+                  const filtered = filterCards(sourceCardInput);
+                  setFilteredSourceCards(filtered);
+                  setSourceDropdownVisible(filtered.length > 0);
+                }
+              }}
+              onBlur={() => {
+                // 약간의 지연을 두어 드롭다운 항목 클릭이 가능하도록 함
+                setTimeout(() => setSourceDropdownVisible(false), 150);
+              }}
+            />
+            {sourceDropdownVisible && filteredSourceCards.length > 0 && (
+              <div style={{
+                position: 'absolute',
+                top: '100%',
+                left: 0,
+                right: 0,
+                background: 'white',
+                border: '1px solid #ccc',
+                borderTop: 'none',
+                maxHeight: 200,
+                overflowY: 'auto',
+                zIndex: 1000,
+                boxShadow: '0 2px 4px rgba(0,0,0,0.1)'
+              }}>
+                {filteredSourceCards.map((card, index) => (
+                  <div
+                    key={card.id}
+                    style={{
+                      padding: '8px 12px',
+                      cursor: 'pointer',
+                      backgroundColor: index === sourceSelectedIndex ? '#e6f3ff' : 'white',
+                      borderBottom: '1px solid #eee'
+                    }}
+                    onMouseDown={() => selectSourceCard(card)}
+                    onMouseEnter={() => setSourceSelectedIndex(index)}
+                  >
+                    {card.title}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
           <input
             list="relationTypeOptions"
             placeholder="관계타입"
@@ -1000,29 +1250,69 @@ function Home() {
               setSelectedRelationIndex(-1);
             }}
           />
-          <input
-            list="cardOptions"
-            placeholder="대상 카드 제목"
-            className="editor-input"
-            id="targetCardInput"
-            onKeyDown={(e)=>{
-              if(e.key==='Enter'){
-                e.stopPropagation();
-                handleCreateRelation();
-              }
-            }}
-            onFocus={() => {
-              setIsRelationListFocused(false);
-              setSelectedRelationIndex(-1);
-            }}
-          />
+
+          {/* 대상 카드 자동완성 */}
+          <div style={{ position: 'relative', flex: 1 }}>
+            <input
+              placeholder="대상 카드 제목"
+              className="editor-input"
+              value={targetCardInput}
+              onChange={(e) => handleTargetCardInputChange(e.target.value)}
+              onKeyDown={handleTargetKeyDown}
+              onFocus={() => {
+                setIsRelationListFocused(false);
+                setSelectedRelationIndex(-1);
+                if (targetCardInput && !targetDropdownVisible) {
+                  const filtered = filterCards(targetCardInput);
+                  setFilteredTargetCards(filtered);
+                  setTargetDropdownVisible(filtered.length > 0);
+                }
+              }}
+              onBlur={() => {
+                // 약간의 지연을 두어 드롭다운 항목 클릭이 가능하도록 함
+                setTimeout(() => setTargetDropdownVisible(false), 150);
+              }}
+            />
+            {targetDropdownVisible && filteredTargetCards.length > 0 && (
+              <div style={{
+                position: 'absolute',
+                top: '100%',
+                left: 0,
+                right: 0,
+                background: 'white',
+                border: '1px solid #ccc',
+                borderTop: 'none',
+                maxHeight: 200,
+                overflowY: 'auto',
+                zIndex: 1000,
+                boxShadow: '0 2px 4px rgba(0,0,0,0.1)'
+              }}>
+                {filteredTargetCards.map((card, index) => (
+                  <div
+                    key={card.id}
+                    style={{
+                      padding: '8px 12px',
+                      cursor: 'pointer',
+                      backgroundColor: index === targetSelectedIndex ? '#e6f3ff' : 'white',
+                      borderBottom: '1px solid #eee'
+                    }}
+                    onMouseDown={() => selectTargetCard(card)}
+                    onMouseEnter={() => setTargetSelectedIndex(index)}
+                  >
+                    {card.title}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
           <button
             type="button"
             onClick={handleCreateRelation}
             className="editor-button"
             tabIndex={-1}
           >
-            관계추가
+            관계생성
           </button>
           <datalist id="relationTypeOptions">
             {relationTypes.map((rt) => (
@@ -1313,6 +1603,75 @@ function Home() {
                 {projects.map(p=>(<option key={p.project_id} value={p.project_id}>{p.project_name}</option>))}
               </select>
             </label>
+
+            <div style={{display:'flex',flexDirection:'column',gap:4}}>
+              <label style={{display:'flex',alignItems:'center',gap:8}}>
+                별칭
+                <input
+                  list="aliasOptions"
+                  className="editor-input"
+                  value={aliasInput}
+                  onChange={(e)=>setAliasInput(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      addCardAlias();
+                    }
+                  }}
+                  placeholder="별칭 입력 후 Enter"
+                />
+                <datalist id="aliasOptions">
+                  {aliases.map((alias) => (
+                    <option key={alias.alias_id} value={alias.alias_name} />
+                  ))}
+                </datalist>
+              </label>
+
+              {cardAliases.length > 0 && (
+                <div style={{marginLeft: 40}}>
+                  <strong style={{fontSize: 12, color: '#666'}}>현재 별칭:</strong>
+                  <div style={{display:'flex',flexWrap:'wrap',gap:4,marginTop:4}}>
+                    {cardAliases.map((alias) => (
+                      <div
+                        key={alias.alias_id}
+                        style={{
+                          display:'flex',
+                          alignItems:'center',
+                          gap:4,
+                          padding:'2px 6px',
+                          background:'#f0f0f0',
+                          borderRadius:12,
+                          fontSize:12,
+                          border:'1px solid #ddd'
+                        }}
+                      >
+                        <span>{alias.alias_name}</span>
+                        <button
+                          onClick={() => removeCardAlias(alias.alias_id)}
+                          style={{
+                            background:'none',
+                            border:'none',
+                            color:'#ff4444',
+                            cursor:'pointer',
+                            padding:0,
+                            width:14,
+                            height:14,
+                            borderRadius:'50%',
+                            display:'flex',
+                            alignItems:'center',
+                            justifyContent:'center',
+                            fontSize:10
+                          }}
+                          title="별칭 제거"
+                        >
+                          ✕
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
 
             <div><strong>생성일:</strong> {cardDetail.createdat}</div>
           </div>
@@ -1800,12 +2159,14 @@ function TodoItem({
   card,
   cardTypes,
   onToggleComplete,
-  onCardClick
+  onCardClick,
+  onDelete
 }: {
   card: any;
   cardTypes: any[];
   onToggleComplete: (cardId: string, currentComplete: boolean) => void;
   onCardClick?: (cardId: string) => void;
+  onDelete?: (cardId: string, cardTitle: string) => void;
 }) {
   const cardType = cardTypes.find(ct => ct.cardtype_id === card.cardtype);
   const isComplete = Boolean(card.complete);
@@ -1826,6 +2187,7 @@ function TodoItem({
   return (
     <div
       style={{
+        position: 'relative',
         display: 'flex',
         alignItems: 'flex-start',
         gap: 12,
@@ -1926,6 +2288,40 @@ function TodoItem({
           )}
         </div>
       </div>
+
+      {/* 삭제 버튼 */}
+      {onDelete && (
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            onDelete(card.id, card.title);
+          }}
+          style={{
+            position: 'absolute',
+            top: 8,
+            right: 8,
+            width: 24,
+            height: 24,
+            border: 'none',
+            background: '#ff4757',
+            color: 'white',
+            borderRadius: '50%',
+            cursor: 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            fontSize: 12,
+            fontWeight: 'bold',
+            opacity: 0.7,
+            transition: 'opacity 0.2s'
+          }}
+          onMouseEnter={(e) => (e.currentTarget.style.opacity = '1')}
+          onMouseLeave={(e) => (e.currentTarget.style.opacity = '0.7')}
+          title="카드 삭제"
+        >
+          ✕
+        </button>
+      )}
     </div>
   );
 }
@@ -1939,6 +2335,26 @@ function Visualization() {
   const [projects, setProjects] = useState<any[]>([]);
   const [cardTypeInput, setCardTypeInput] = useState('');
   const [toast, setToast] = useState('');
+  // 별칭 관련 상태
+  const [aliases, setAliases] = useState<any[]>([]);
+  const [cardAliases, setCardAliases] = useState<any[]>([]);
+  const [aliasInput, setAliasInput] = useState('');
+  // 관계 및 정렬 관련 상태
+  const [allRelations, setAllRelations] = useState<any[]>([]);
+  const [relationTypes, setRelationTypes] = useState<any[]>([]);
+  const [sortByRelationType, setSortByRelationType] = useState('all');
+
+  // 설정 상태
+  const [settings, setSettings] = useState({
+    confirmDelete: true,
+    exportTemplate: `아래 관계들을 검토하여 이 관계의 논리적 오류가 있는지 점검하고, 이를 기반으로 계획을 세워줘.
+
+{relationList}
+
+시간정보가 있는 카드 목록{timeCardsCount}
+{timeLegend}
+{timeLines}`
+  });
 
   // 카드 및 카드타입 로드
   useEffect(() => {
@@ -1967,9 +2383,37 @@ function Visualization() {
       if (projectsRes.success) {
         setProjects(projectsRes.data);
       }
+
+      // 별칭 로드
+      const aliasesRes = await window.electron.ipcRenderer.invoke('get-aliases') as any;
+      if (aliasesRes.success) {
+        setAliases(aliasesRes.data);
+      }
+
+      // 관계 로드
+      const relationsRes = await window.electron.ipcRenderer.invoke('get-relations') as any;
+      if (relationsRes.success) {
+        setAllRelations(relationsRes.data);
+      }
+
+      // 관계타입 로드
+      const relationTypesRes = await window.electron.ipcRenderer.invoke('get-relationtypes') as any;
+      if (relationTypesRes.success) {
+        setRelationTypes(relationTypesRes.data);
+      }
     };
 
     loadData();
+
+    // 설정 로드
+    try {
+      const savedSettings = localStorage.getItem('forneed-settings');
+      if (savedSettings) {
+        setSettings(JSON.parse(savedSettings));
+      }
+    } catch (error) {
+      console.error('Failed to load settings:', error);
+    }
   }, []);
 
   // 토스트 메시지 표시
@@ -1978,13 +2422,100 @@ function Visualization() {
     setTimeout(() => setToast(''), 3000);
   };
 
-  // 카드 선택 핸들러
+  // 카드별 관계 수 계산
+  const getRelationCount = (cardId: string) => {
+    return allRelations.filter(rel => rel.source === cardId || rel.target === cardId).length;
+  };
+
+  // 특정 관계타입별 관계 수 계산
+  const getRelationCountByType = (cardId: string, relationTypeName: string) => {
+    const relationType = relationTypes.find(rt => rt.typename === relationTypeName);
+    if (!relationType) return 0;
+
+    return allRelations.filter(rel =>
+      (rel.source === cardId || rel.target === cardId) &&
+      rel.relationtype_id === relationType.relationtype_id
+    ).length;
+  };
+
+    // 카드 정렬 함수 (관계 수 + 가나다순)
+  const getSortedCards = () => {
+    const todoCardType = cardTypes.find(ct => ct.cardtype_name === 'todo');
+
+    // todo 카드타입만 필터링
+    const todoCards = cards.filter(card =>
+      card.cardtype === todoCardType?.cardtype_id
+    );
+
+    return todoCards.sort((a, b) => {
+      let countA, countB;
+
+      if (sortByRelationType === 'all') {
+        countA = getRelationCount(a.id);
+        countB = getRelationCount(b.id);
+      } else {
+        countA = getRelationCountByType(a.id, sortByRelationType);
+        countB = getRelationCountByType(b.id, sortByRelationType);
+      }
+
+      // 관계 수가 같으면 가나다순 정렬
+      if (countA === countB) {
+        return a.title.localeCompare(b.title, 'ko-KR');
+      }
+
+      // 관계 수 내림차순 (많은 관계가 위로)
+      return countB - countA;
+    });
+  };
+
+  // 시각화에서 카드 삭제 함수
+  const deleteCardFromList = async (cardId: string, cardTitle: string) => {
+    // 설정에 따라 확인 다이얼로그 표시
+    if (settings.confirmDelete && !window.confirm(`${cardTitle} 카드를 삭제할까요?`)) {
+      return;
+    }
+
+    try {
+      const res = (await window.electron.ipcRenderer.invoke('delete-card', cardId)) as any;
+      if (res.success) {
+        showToast(`${cardTitle} 카드 삭제 완료`);
+
+        // 선택된 카드가 삭제된 카드라면 선택 해제
+        if (selectedCard && selectedCard.id === cardId) {
+          setSelectedCard(null);
+        }
+
+        // 카드 목록에서 제거
+        setCards(prev => prev.filter(c => c.id !== cardId));
+
+        // 관계 목록도 새로고침
+        const relationsRes = await window.electron.ipcRenderer.invoke('get-relations') as any;
+        if (relationsRes.success) {
+          setAllRelations(relationsRes.data);
+        }
+      } else {
+        showToast('카드 삭제에 실패했습니다');
+      }
+    } catch (error) {
+      showToast('카드 삭제 중 오류가 발생했습니다');
+      console.error('Delete card error:', error);
+    }
+  };
+
+    // 카드 선택 핸들러
   const handleCardSelect = async (cardId: string) => {
     const detailRes = await window.electron.ipcRenderer.invoke('get-card-detail', cardId) as any;
     if (detailRes.success) {
       setSelectedCard(detailRes.data);
       const cardType = cardTypes.find(ct => ct.cardtype_id === detailRes.data.cardtype);
       setCardTypeInput(cardType?.cardtype_name || '');
+
+      // 카드 별칭들 불러오기
+      const aliasRes = await window.electron.ipcRenderer.invoke('get-card-aliases', cardId) as any;
+      if (aliasRes.success) {
+        setCardAliases(aliasRes.data);
+      }
+      setAliasInput('');
     }
   };
 
@@ -2012,7 +2543,7 @@ function Visualization() {
     }
   };
 
-  // 카드타입 저장
+    // 카드타입 저장
   const saveCardType = async () => {
     if (!selectedCard || !cardTypeInput.trim()) return;
 
@@ -2041,6 +2572,56 @@ function Visualization() {
       }
     } catch (error) {
       showToast('카드타입 저장 실패');
+    }
+  };
+
+    // 별칭 추가
+  const addCardAlias = async () => {
+    if (!selectedCard || !aliasInput.trim()) return;
+
+    const res = (await window.electron.ipcRenderer.invoke('add-card-alias', {
+      card_id: selectedCard.id,
+      alias_name: aliasInput.trim()
+    })) as any;
+
+    if (res.success) {
+      // 카드 별칭들 새로고침
+      const aliasRes = await window.electron.ipcRenderer.invoke('get-card-aliases', selectedCard.id) as any;
+      if (aliasRes.success) {
+        setCardAliases(aliasRes.data);
+      }
+      // 전체 별칭 목록 새로고침
+      const aliasesRes = await window.electron.ipcRenderer.invoke('get-aliases') as any;
+      if (aliasesRes.success) {
+        setAliases(aliasesRes.data);
+      }
+      setAliasInput(''); // 입력 필드 초기화
+      showToast('별칭이 추가되었습니다');
+    } else if (res.error === 'duplicate') {
+      showToast(res.message || '이미 있는 별칭입니다');
+    } else {
+      showToast('별칭 추가에 실패했습니다');
+    }
+  };
+
+  // 별칭 제거
+  const removeCardAlias = async (aliasId: number) => {
+    if (!selectedCard) return;
+
+    const res = (await window.electron.ipcRenderer.invoke('remove-card-alias', {
+      card_id: selectedCard.id,
+      alias_id: aliasId
+    })) as any;
+
+    if (res.success) {
+      // 카드 별칭들 새로고침
+      const aliasRes = await window.electron.ipcRenderer.invoke('get-card-aliases', selectedCard.id) as any;
+      if (aliasRes.success) {
+        setCardAliases(aliasRes.data);
+      }
+      showToast('별칭이 제거되었습니다');
+    } else {
+      showToast('별칭 제거에 실패했습니다');
     }
   };
 
@@ -2101,13 +2682,28 @@ function Visualization() {
         {activeTab === 'list' && (
           <div style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20, flexShrink: 0 }}>
-              <h3 style={{ margin: 0 }}>할일 목록</h3>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                <h3 style={{ margin: 0 }}>할일 목록</h3>
+                <select
+                  value={sortByRelationType}
+                  onChange={(e) => setSortByRelationType(e.target.value)}
+                  style={{ fontSize: 12, padding: '4px 8px', borderRadius: 4 }}
+                  title="관계타입별 정렬"
+                >
+                  <option value="all">전체관계</option>
+                  {relationTypes.map((rt) => (
+                    <option key={rt.relationtype_id} value={rt.typename}>
+                      {rt.typename}
+                    </option>
+                  ))}
+                </select>
+              </div>
               <div style={{ fontSize: 14, color: '#666' }}>
-                완료: {cards.filter(c => c.complete).length} / 전체: {cards.length}
+                완료: {getSortedCards().filter(c => c.complete).length} / 전체: {getSortedCards().length}
               </div>
             </div>
 
-            {cards.length === 0 ? (
+                        {getSortedCards().length === 0 ? (
               <p style={{ color: '#666', textAlign: 'center', padding: 40 }}>
                 할일이 없습니다. 홈에서 카드를 생성해보세요.
               </p>
@@ -2124,18 +2720,42 @@ function Visualization() {
                 {/* 미완료 할일들 */}
                 <div>
                   <h4 style={{ margin: '0 0 12px 0', color: '#333', fontSize: 16 }}>
-                    🔥 해야할 일 ({cards.filter(c => !c.complete).length})
+                    🔥 해야할 일 ({getSortedCards().filter(c => !c.complete).length})
+                    <span style={{ fontSize: 12, fontWeight: 'normal', color: '#666', marginLeft: 8 }}>
+                      {sortByRelationType === 'all' ? '전체관계순' : `${sortByRelationType}순`}
+                    </span>
                   </h4>
-                  {cards.filter(c => !c.complete).map(card => (
-                    <TodoItem
-                      key={card.id}
-                      card={card}
-                      cardTypes={cardTypes}
-                      onToggleComplete={toggleComplete}
-                      onCardClick={handleCardSelect}
-                    />
-                  ))}
-                  {cards.filter(c => !c.complete).length === 0 && (
+                  {getSortedCards().filter(c => !c.complete).map(card => {
+                    const relationCount = sortByRelationType === 'all'
+                      ? getRelationCount(card.id)
+                      : getRelationCountByType(card.id, sortByRelationType);
+
+                    return (
+                      <div key={card.id} style={{ position: 'relative' }}>
+                        <TodoItem
+                          card={card}
+                          cardTypes={cardTypes}
+                          onToggleComplete={toggleComplete}
+                          onCardClick={handleCardSelect}
+                          onDelete={deleteCardFromList}
+                        />
+                        <div style={{
+                          position: 'absolute',
+                          top: 8,
+                          right: 36,
+                          background: '#0066cc',
+                          color: 'white',
+                          borderRadius: 10,
+                          padding: '2px 6px',
+                          fontSize: 10,
+                          fontWeight: 'bold'
+                        }}>
+                          {relationCount}
+                        </div>
+                      </div>
+                    );
+                  })}
+                  {getSortedCards().filter(c => !c.complete).length === 0 && (
                     <p style={{ color: '#888', fontStyle: 'italic', marginLeft: 20 }}>
                       모든 할일을 완료했습니다! 🎉
                     </p>
@@ -2143,20 +2763,41 @@ function Visualization() {
                 </div>
 
                 {/* 완료된 할일들 */}
-                {cards.filter(c => c.complete).length > 0 && (
+                {getSortedCards().filter(c => c.complete).length > 0 && (
                   <div style={{ marginTop: 24 }}>
                     <h4 style={{ margin: '0 0 12px 0', color: '#666', fontSize: 16 }}>
-                      ✅ 완료된 일 ({cards.filter(c => c.complete).length})
+                      ✅ 완료된 일 ({getSortedCards().filter(c => c.complete).length})
                     </h4>
-                    {cards.filter(c => c.complete).map(card => (
-                      <TodoItem
-                        key={card.id}
-                        card={card}
-                        cardTypes={cardTypes}
-                        onToggleComplete={toggleComplete}
-                        onCardClick={handleCardSelect}
-                      />
-                    ))}
+                    {getSortedCards().filter(c => c.complete).map(card => {
+                      const relationCount = sortByRelationType === 'all'
+                        ? getRelationCount(card.id)
+                        : getRelationCountByType(card.id, sortByRelationType);
+
+                      return (
+                        <div key={card.id} style={{ position: 'relative' }}>
+                          <TodoItem
+                            card={card}
+                            cardTypes={cardTypes}
+                            onToggleComplete={toggleComplete}
+                            onCardClick={handleCardSelect}
+                            onDelete={deleteCardFromList}
+                          />
+                          <div style={{
+                            position: 'absolute',
+                            top: 8,
+                            right: 36,
+                            background: '#666',
+                            color: 'white',
+                            borderRadius: 10,
+                            padding: '2px 6px',
+                            fontSize: 10,
+                            fontWeight: 'bold'
+                          }}>
+                            {relationCount}
+                          </div>
+                        </div>
+                      );
+                    })}
                   </div>
                 )}
               </div>
@@ -2271,6 +2912,75 @@ function Visualization() {
                 {projects.map(p=>(<option key={p.project_id} value={p.project_id}>{p.project_name}</option>))}
               </select>
             </label>
+
+            <div style={{display:'flex',flexDirection:'column',gap:4}}>
+              <label style={{display:'flex',alignItems:'center',gap:8}}>
+                별칭
+                <input
+                  list="aliasOptionsViz"
+                  className="editor-input"
+                  value={aliasInput}
+                  onChange={(e)=>setAliasInput(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      addCardAlias();
+                    }
+                  }}
+                  placeholder="별칭 입력 후 Enter"
+                />
+                <datalist id="aliasOptionsViz">
+                  {aliases.map((alias) => (
+                    <option key={alias.alias_id} value={alias.alias_name} />
+                  ))}
+                </datalist>
+              </label>
+
+              {cardAliases.length > 0 && (
+                <div style={{marginLeft: 40}}>
+                  <strong style={{fontSize: 12, color: '#666'}}>현재 별칭:</strong>
+                  <div style={{display:'flex',flexWrap:'wrap',gap:4,marginTop:4}}>
+                    {cardAliases.map((alias) => (
+                      <div
+                        key={alias.alias_id}
+                        style={{
+                          display:'flex',
+                          alignItems:'center',
+                          gap:4,
+                          padding:'2px 6px',
+                          background:'#f0f0f0',
+                          borderRadius:12,
+                          fontSize:12,
+                          border:'1px solid #ddd'
+                        }}
+                      >
+                        <span>{alias.alias_name}</span>
+                        <button
+                          onClick={() => removeCardAlias(alias.alias_id)}
+                          style={{
+                            background:'none',
+                            border:'none',
+                            color:'#ff4444',
+                            cursor:'pointer',
+                            padding:0,
+                            width:14,
+                            height:14,
+                            borderRadius:'50%',
+                            display:'flex',
+                            alignItems:'center',
+                            justifyContent:'center',
+                            fontSize:10
+                          }}
+                          title="별칭 제거"
+                        >
+                          ✕
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
 
             <div><strong>생성일:</strong> {selectedCard.createdat}</div>
           </div>
