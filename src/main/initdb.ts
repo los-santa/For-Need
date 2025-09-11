@@ -257,4 +257,150 @@ try {
   console.log('Usage logs table creation error:', error);
 }
 
+// =========================
+// 습관 추적 시스템 DDL
+// =========================
+
+// 습관 속성 서브테이블 (1:1 cards.id, cardtype이 'habit'인 카드만)
+db.exec(`
+  CREATE TABLE IF NOT EXISTS habit_properties (
+    -- 식별/연결 (기존 CARDS와 호환)
+    card_id            TEXT PRIMARY KEY,                          -- FK cards.id (cardtype이 'habit'만 허용)
+
+    -- 반복 정의(RFC5545)
+    dtstart_local      TEXT NOT NULL,                             -- 'YYYY-MM-DDTHH:MM:SS' (로컬 시작)
+    tzid               TEXT NOT NULL,                             -- IANA TZ (예: 'Asia/Seoul')
+    rrule              TEXT NOT NULL,                             -- 예: 'FREQ=WEEKLY;INTERVAL=1;BYDAY=MO,WE,FR'
+    rdates_json        TEXT,                                      -- JSON 배열: 추가 발생 ISO8601
+    exdates_json       TEXT,                                      -- JSON 배열: 제외 일시 ISO8601
+    wkst               TEXT DEFAULT 'MO',                         -- 주 시작 요일
+    until_utc          TEXT,                                      -- ISO8601Z
+    count_limit        INTEGER,                                   -- 발생 횟수 제한
+
+    -- 수행 단위/시간
+    duration_minutes   INTEGER NOT NULL DEFAULT 0,                -- 0=체크형, >0=블록형
+    min_spacing_minutes INTEGER NOT NULL DEFAULT 0,               -- 인스턴스 간 최소 간격
+
+    -- 측정/정량화
+    unit_label         TEXT,                                      -- 예: '회', '분', '페이지'
+    target_per_occurrence INTEGER NOT NULL DEFAULT 1,             -- 발생당 목표치
+    max_per_day        INTEGER,                                   -- 하루 상한(옵션)
+    rollover_mode      TEXT NOT NULL DEFAULT 'none',             -- 'none'|'forward'|'backward'
+
+    -- 목표/목표주기
+    weekly_quota       INTEGER,                                   -- 주간 총 목표
+    monthly_quota      INTEGER,                                   -- 월간 총 목표
+    adherence_target   REAL,                                      -- 목표 달성률(%)
+
+    -- 스트릭/최근 상태(요약 캐시)
+    streak_count       INTEGER NOT NULL DEFAULT 0,
+    longest_streak     INTEGER NOT NULL DEFAULT 0,
+    last_completed_at  TEXT,                                      -- 로컬 기준 ISO8601
+
+    -- 알림/리마인더
+    notify_enabled     INTEGER NOT NULL DEFAULT 0,               -- 0/1
+    notify_before_min  INTEGER,                                   -- 시작 전 알림 분
+    notify_at_local    TEXT,                                      -- 고정 알림시각
+
+    -- 수명주기/상태
+    status             TEXT NOT NULL DEFAULT 'active',           -- 'active'|'paused'|'archived'
+    start_date         TEXT,                                      -- 'YYYY-MM-DD'
+    end_date           TEXT,                                      -- 'YYYY-MM-DD'
+
+    -- 메타
+    color_hex          TEXT,                                      -- UI 색상
+    icon               TEXT,                                      -- UI 아이콘 키
+    notes              TEXT,                                      -- 설명
+
+    -- 감사/타임스탬프
+    created_at         TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at         TEXT NOT NULL DEFAULT (datetime('now')),
+    deleted_at         TEXT,
+
+    FOREIGN KEY(card_id) REFERENCES CARDS(id) ON DELETE CASCADE
+  )
+`);
+
+// 반복 전개 결과 캐시 테이블
+db.exec(`
+  CREATE TABLE IF NOT EXISTS habit_instances_cache (
+    card_id         TEXT NOT NULL,
+    occurrence_key  TEXT NOT NULL,                                -- UTC 키: 'YYYYMMDDTHHMMSSZ'
+    start_utc       TEXT NOT NULL,                                -- ISO8601Z
+    end_utc         TEXT,                                         -- duration_minutes>0이면 필수
+    is_exception    INTEGER NOT NULL DEFAULT 0,                  -- EXDATE 적용 결과
+    generated_at    TEXT NOT NULL DEFAULT (datetime('now')),
+    PRIMARY KEY(card_id, occurrence_key),
+    FOREIGN KEY(card_id) REFERENCES CARDS(id) ON DELETE CASCADE
+  )
+`);
+
+// 수행 기록 테이블 (멱등 upsert 대상)
+db.exec(`
+  CREATE TABLE IF NOT EXISTS habit_logs (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    card_id         TEXT NOT NULL,
+    occurrence_key  TEXT NOT NULL,                                -- 인스턴스 식별자
+    done_quantity   INTEGER NOT NULL DEFAULT 1,                  -- 정량 수행치
+    note            TEXT,
+    created_at      TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at      TEXT NOT NULL DEFAULT (datetime('now')),
+    UNIQUE(card_id, occurrence_key),
+    FOREIGN KEY(card_id) REFERENCES CARDS(id) ON DELETE CASCADE
+  )
+`);
+
+// 트리거: habit 카드타입만 허용
+db.exec(`
+  CREATE TRIGGER IF NOT EXISTS habit_props_enforce_cardtype
+  BEFORE INSERT ON habit_properties
+  FOR EACH ROW
+  BEGIN
+    SELECT CASE
+      WHEN (
+        SELECT ct.cardtype_name 
+        FROM CARDS c 
+        JOIN CARDTYPES ct ON c.cardtype = ct.cardtype_id 
+        WHERE c.id = NEW.card_id
+      ) <> 'habit'
+      THEN RAISE(ABORT, 'Card must have cardtype habit')
+    END;
+  END
+`);
+
+// 트리거: habit_properties updated_at 자동 갱신
+db.exec(`
+  CREATE TRIGGER IF NOT EXISTS habit_props_touch_updated_at
+  AFTER UPDATE ON habit_properties
+  FOR EACH ROW
+  BEGIN
+    UPDATE habit_properties SET updated_at = datetime('now') WHERE card_id = NEW.card_id;
+  END
+`);
+
+// 트리거: habit_logs updated_at 자동 갱신
+db.exec(`
+  CREATE TRIGGER IF NOT EXISTS habit_logs_touch_updated_at
+  AFTER UPDATE ON habit_logs
+  FOR EACH ROW
+  BEGIN
+    UPDATE habit_logs SET updated_at = datetime('now') WHERE id = NEW.id;
+  END
+`);
+
+// 인덱스
+db.exec(`
+  CREATE INDEX IF NOT EXISTS ix_inst_time ON habit_instances_cache(start_utc);
+  CREATE INDEX IF NOT EXISTS ix_inst_card_time ON habit_instances_cache(card_id, start_utc);
+  CREATE UNIQUE INDEX IF NOT EXISTS ux_logs_card_occ ON habit_logs(card_id, occurrence_key);
+`);
+
+// 'habit' 카드타입이 없으면 추가
+try {
+  db.prepare("INSERT OR IGNORE INTO CARDTYPES (cardtype_name, createdat) VALUES ('habit', datetime('now'))").run();
+  console.log('Added habit cardtype if not exists');
+} catch (error) {
+  console.log('Habit cardtype creation error:', error);
+}
+
 export default db;

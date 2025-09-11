@@ -12,6 +12,20 @@ import path from 'path';
 import { app, BrowserWindow, ipcMain } from 'electron';
 import log from 'electron-log';
 import db from './initdb';
+import {
+  HabitExpansionInput,
+  HabitProperties,
+  expandAndUpsertInstances,
+  checkHabit,
+  uncheckHabit,
+  setQuantity,
+  getTodayPending,
+  getTodayDone,
+  getAdherenceLastNDays,
+  getCurrentStreak,
+  getLongestStreak,
+  onRRuleUpdated
+} from './habitUtils';
 import { v4 as uuidv4 } from 'uuid';
 import { randomUUID } from 'crypto';
 import { resolveHtmlPath } from './util';
@@ -1534,6 +1548,348 @@ ipcMain.handle('get-session-analysis', async () => {
   } catch (error) {
     log.error('Failed to get session analysis:', error);
     return { success: false, error: 'Failed to get session analysis' };
+  }
+});
+
+// =========================
+// 습관 추적 IPC 핸들러들
+// =========================
+
+// 습관 속성 생성/수정
+ipcMain.handle('create-habit', async (event, habitData: Partial<HabitProperties>) => {
+  try {
+    logUsage({
+      action_type: 'create-habit',
+      target_type: 'habit',
+      target_id: habitData.cardId,
+      details: { rrule: habitData.rrule }
+    });
+
+    const stmt = db.prepare(`
+      INSERT OR REPLACE INTO habit_properties (
+        card_id, dtstart_local, tzid, rrule, rdates_json, exdates_json, wkst,
+        until_utc, count_limit, duration_minutes, min_spacing_minutes,
+        unit_label, target_per_occurrence, max_per_day, rollover_mode,
+        weekly_quota, monthly_quota, adherence_target,
+        notify_enabled, notify_before_min, notify_at_local,
+        status, start_date, end_date, color_hex, icon, notes
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+
+    stmt.run(
+      habitData.cardId,
+      habitData.dtstartLocal,
+      habitData.tzid,
+      habitData.rrule,
+      habitData.rdatesJson || null,
+      habitData.exdatesJson || null,
+      habitData.wkst || 'MO',
+      habitData.untilUtc || null,
+      habitData.countLimit || null,
+      habitData.durationMinutes || 0,
+      habitData.minSpacingMinutes || 0,
+      habitData.unitLabel || null,
+      habitData.targetPerOccurrence || 1,
+      habitData.maxPerDay || null,
+      habitData.rolloverMode || 'none',
+      habitData.weeklyQuota || null,
+      habitData.monthlyQuota || null,
+      habitData.adherenceTarget || null,
+      habitData.notifyEnabled || 0,
+      habitData.notifyBeforeMin || null,
+      habitData.notifyAtLocal || null,
+      habitData.status || 'active',
+      habitData.startDate || null,
+      habitData.endDate || null,
+      habitData.colorHex || null,
+      habitData.icon || null,
+      habitData.notes || null
+    );
+
+    return { success: true, data: { cardId: habitData.cardId } };
+  } catch (error) {
+    log.error('Failed to create habit:', error);
+    logUsage({
+      action_type: 'create-habit',
+      error_message: String(error)
+    });
+    return { success: false, error: 'Failed to create habit' };
+  }
+});
+
+// 습관 속성 조회
+ipcMain.handle('get-habit', async (event, cardId: string) => {
+  try {
+    const habit = db.prepare('SELECT * FROM habit_properties WHERE card_id = ? AND deleted_at IS NULL').get(cardId);
+    return { success: true, data: habit };
+  } catch (error) {
+    log.error('Failed to get habit:', error);
+    return { success: false, error: 'Failed to get habit' };
+  }
+});
+
+// 모든 습관 조회
+ipcMain.handle('get-habits', async () => {
+  try {
+    const habits = db.prepare(`
+      SELECT 
+        hp.*,
+        c.title,
+        c.content
+      FROM habit_properties hp
+      JOIN CARDS c ON hp.card_id = c.id
+      WHERE hp.deleted_at IS NULL 
+      AND c.deleted_at IS NULL
+      ORDER BY hp.created_at DESC
+    `).all();
+    
+    return { success: true, data: habits };
+  } catch (error) {
+    log.error('Failed to get habits:', error);
+    return { success: false, error: 'Failed to get habits' };
+  }
+});
+
+// 습관 속성 업데이트
+ipcMain.handle('update-habit', async (event, cardId: string, updates: Partial<HabitProperties>) => {
+  try {
+    // 기존 데이터 조회
+    const oldHabit = db.prepare('SELECT * FROM habit_properties WHERE card_id = ?').get(cardId);
+    if (!oldHabit) {
+      return { success: false, error: 'Habit not found' };
+    }
+
+    // 업데이트 쿼리 생성
+    const updateFields: string[] = [];
+    const values: any[] = [];
+    
+    Object.entries(updates).forEach(([key, value]) => {
+      if (value !== undefined) {
+        updateFields.push(`${key} = ?`);
+        values.push(value);
+      }
+    });
+    
+    if (updateFields.length === 0) {
+      return { success: true, data: oldHabit };
+    }
+    
+    values.push(cardId);
+    
+    const updateStmt = db.prepare(`
+      UPDATE habit_properties 
+      SET ${updateFields.join(', ')} 
+      WHERE card_id = ?
+    `);
+    
+    updateStmt.run(...values);
+    
+    // RRULE 관련 변경사항이 있다면 캐시 재전개
+    const rruleChanged = updates.rrule || updates.dtstartLocal || updates.tzid || 
+                        updates.rdatesJson || updates.exdatesJson;
+    
+    if (rruleChanged) {
+      const newHabit = db.prepare('SELECT * FROM habit_properties WHERE card_id = ?').get(cardId) as HabitProperties;
+      await onRRuleUpdated(db, cardId, oldHabit, newHabit);
+    }
+
+    return { success: true, data: { cardId } };
+  } catch (error) {
+    log.error('Failed to update habit:', error);
+    return { success: false, error: 'Failed to update habit' };
+  }
+});
+
+// 습관 삭제 (소프트 삭제)
+ipcMain.handle('delete-habit', async (event, cardId: string) => {
+  try {
+    const stmt = db.prepare(`
+      UPDATE habit_properties 
+      SET deleted_at = datetime('now') 
+      WHERE card_id = ?
+    `);
+    
+    stmt.run(cardId);
+    
+    return { success: true, data: { cardId } };
+  } catch (error) {
+    log.error('Failed to delete habit:', error);
+    return { success: false, error: 'Failed to delete habit' };
+  }
+});
+
+// RRULE 전개 및 캐시 생성
+ipcMain.handle('expand-habit-instances', async (event, input: HabitExpansionInput) => {
+  try {
+    await expandAndUpsertInstances(db, input);
+    return { success: true };
+  } catch (error) {
+    log.error('Failed to expand habit instances:', error);
+    return { success: false, error: 'Failed to expand habit instances' };
+  }
+});
+
+// 습관 체크
+ipcMain.handle('check-habit', async (event, cardId: string, occurrenceKey: string, quantity?: number, note?: string) => {
+  try {
+    logUsage({
+      action_type: 'check-habit',
+      target_type: 'habit',
+      target_id: cardId,
+      details: { occurrenceKey, quantity: quantity || 1 }
+    });
+
+    await checkHabit(db, cardId, occurrenceKey, quantity, note);
+    return { success: true };
+  } catch (error) {
+    log.error('Failed to check habit:', error);
+    logUsage({
+      action_type: 'check-habit',
+      error_message: String(error)
+    });
+    return { success: false, error: 'Failed to check habit' };
+  }
+});
+
+// 습관 언체크
+ipcMain.handle('uncheck-habit', async (event, cardId: string, occurrenceKey: string) => {
+  try {
+    logUsage({
+      action_type: 'uncheck-habit',
+      target_type: 'habit',
+      target_id: cardId,
+      details: { occurrenceKey }
+    });
+
+    await uncheckHabit(db, cardId, occurrenceKey);
+    return { success: true };
+  } catch (error) {
+    log.error('Failed to uncheck habit:', error);
+    logUsage({
+      action_type: 'uncheck-habit',
+      error_message: String(error)
+    });
+    return { success: false, error: 'Failed to uncheck habit' };
+  }
+});
+
+// 습관 수량 설정
+ipcMain.handle('set-habit-quantity', async (event, cardId: string, occurrenceKey: string, quantity: number) => {
+  try {
+    logUsage({
+      action_type: 'set-habit-quantity',
+      target_type: 'habit',
+      target_id: cardId,
+      details: { occurrenceKey, quantity }
+    });
+
+    await setQuantity(db, cardId, occurrenceKey, quantity);
+    return { success: true };
+  } catch (error) {
+    log.error('Failed to set habit quantity:', error);
+    logUsage({
+      action_type: 'set-habit-quantity',
+      error_message: String(error)
+    });
+    return { success: false, error: 'Failed to set habit quantity' };
+  }
+});
+
+// 오늘 미완료 습관 조회
+ipcMain.handle('get-today-pending-habits', async (event, localDayStartIso: string, localDayEndIso: string, tzid: string) => {
+  try {
+    const habits = await getTodayPending(db, localDayStartIso, localDayEndIso, tzid);
+    return { success: true, data: habits };
+  } catch (error) {
+    log.error('Failed to get today pending habits:', error);
+    return { success: false, error: 'Failed to get today pending habits' };
+  }
+});
+
+// 오늘 완료된 습관 조회
+ipcMain.handle('get-today-done-habits', async (event, localDayStartIso: string, localDayEndIso: string, tzid: string) => {
+  try {
+    const habits = await getTodayDone(db, localDayStartIso, localDayEndIso, tzid);
+    return { success: true, data: habits };
+  } catch (error) {
+    log.error('Failed to get today done habits:', error);
+    return { success: false, error: 'Failed to get today done habits' };
+  }
+});
+
+// 습관 달성률 조회
+ipcMain.handle('get-habit-adherence', async (event, cardId: string, days?: number) => {
+  try {
+    const adherence = await getAdherenceLastNDays(db, cardId, days);
+    return { success: true, data: { adherence } };
+  } catch (error) {
+    log.error('Failed to get habit adherence:', error);
+    return { success: false, error: 'Failed to get habit adherence' };
+  }
+});
+
+// 현재 스트릭 조회
+ipcMain.handle('get-current-streak', async (event, cardId: string) => {
+  try {
+    const streak = await getCurrentStreak(db, cardId);
+    return { success: true, data: { streak } };
+  } catch (error) {
+    log.error('Failed to get current streak:', error);
+    return { success: false, error: 'Failed to get current streak' };
+  }
+});
+
+// 최장 스트릭 조회
+ipcMain.handle('get-longest-streak', async (event, cardId: string) => {
+  try {
+    const streak = await getLongestStreak(db, cardId);
+    return { success: true, data: { streak } };
+  } catch (error) {
+    log.error('Failed to get longest streak:', error);
+    return { success: false, error: 'Failed to get longest streak' };
+  }
+});
+
+// 습관 인스턴스 조회 (특정 기간)
+ipcMain.handle('get-habit-instances', async (event, cardId: string, startUtc: string, endUtc: string) => {
+  try {
+    const instances = db.prepare(`
+      SELECT 
+        hic.*,
+        CASE WHEN hl.id IS NOT NULL THEN 1 ELSE 0 END as is_completed,
+        hl.done_quantity,
+        hl.note,
+        hl.updated_at as completed_at
+      FROM habit_instances_cache hic
+      LEFT JOIN habit_logs hl ON hic.card_id = hl.card_id AND hic.occurrence_key = hl.occurrence_key
+      WHERE hic.card_id = ?
+      AND hic.start_utc >= ?
+      AND hic.start_utc <= ?
+      AND hic.is_exception = 0
+      ORDER BY hic.start_utc
+    `).all(cardId, startUtc, endUtc);
+    
+    return { success: true, data: instances };
+  } catch (error) {
+    log.error('Failed to get habit instances:', error);
+    return { success: false, error: 'Failed to get habit instances' };
+  }
+});
+
+// 습관 로그 조회
+ipcMain.handle('get-habit-logs', async (event, cardId: string, limit?: number) => {
+  try {
+    const query = limit 
+      ? `SELECT * FROM habit_logs WHERE card_id = ? ORDER BY updated_at DESC LIMIT ?`
+      : `SELECT * FROM habit_logs WHERE card_id = ? ORDER BY updated_at DESC`;
+    
+    const params = limit ? [cardId, limit] : [cardId];
+    const logs = db.prepare(query).all(...params);
+    
+    return { success: true, data: logs };
+  } catch (error) {
+    log.error('Failed to get habit logs:', error);
+    return { success: false, error: 'Failed to get habit logs' };
   }
 });
 
