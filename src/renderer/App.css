@@ -8,7 +8,7 @@ html, body, #root {
   background: #121212;
   color: #ffffff;
   font-family: sans-serif;
-  overflow: hidden;
+  overflow-y: auto;
 }
 
 body {

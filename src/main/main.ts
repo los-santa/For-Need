@@ -12,8 +12,202 @@ import path from 'path';
 import { app, BrowserWindow, ipcMain } from 'electron';
 import log from 'electron-log';
 import db from './initdb';
+import { v4 as uuidv4 } from 'uuid';
 import { randomUUID } from 'crypto';
 import { resolveHtmlPath } from './util';
+
+// 세션 관리
+let currentSessionId = uuidv4();
+
+// 로깅 함수
+interface LogEntry {
+  action_type: string;
+  target_type?: string;
+  target_id?: string;
+  details?: any;
+  duration_ms?: number;
+  error_message?: string;
+}
+
+function logUsage(entry: LogEntry) {
+  try {
+    const logData = {
+      timestamp: new Date().toISOString(),
+      session_id: currentSessionId,
+      action_type: entry.action_type,
+      target_type: entry.target_type || null,
+      target_id: entry.target_id || null,
+      details: entry.details ? JSON.stringify(entry.details) : null,
+      duration_ms: entry.duration_ms || null,
+      error_message: entry.error_message || null
+    };
+
+    db.prepare(`
+      INSERT INTO USAGE_LOGS (timestamp, session_id, action_type, target_type, target_id, details, duration_ms, error_message)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      logData.timestamp,
+      logData.session_id,
+      logData.action_type,
+      logData.target_type,
+      logData.target_id,
+      logData.details,
+      logData.duration_ms,
+      logData.error_message
+    );
+  } catch (error) {
+    log.error('Failed to log usage:', error);
+  }
+}
+
+// Before/After 관계 검증 함수
+function validateBeforeAfterRelationships(cardId: string, field: string, value: any): { valid: boolean; error?: string; conflictCards?: any[] } {
+  try {
+    // 날짜/시간 관련 필드만 검증
+    const dateFields = ['startdate', 'enddate', 'es', 'ls'];
+    if (!dateFields.includes(field) || !value) {
+      return { valid: true };
+    }
+
+    // 현재 카드가 참여하는 before/after 관계 조회
+    const beforeAfterRelations = db.prepare(`
+      SELECT
+        r.relation_id,
+        r.source,
+        r.target,
+        rt.typename,
+        sc.title as source_title,
+        tc.title as target_title,
+        sc.startdate as source_startdate,
+        sc.enddate as source_enddate,
+        sc.es as source_es,
+        sc.ls as source_ls,
+        tc.startdate as target_startdate,
+        tc.enddate as target_enddate,
+        tc.es as target_es,
+        tc.ls as target_ls
+      FROM RELATION r
+      JOIN RELATIONTYPE rt ON r.relationtype_id = rt.relationtype_id
+      LEFT JOIN CARDS sc ON r.source = sc.id
+      LEFT JOIN CARDS tc ON r.target = tc.id
+      WHERE (r.source = ? OR r.target = ?)
+        AND (rt.typename = 'before' OR rt.typename = 'after')
+        AND r.deleted_at IS NULL
+        AND rt.deleted_at IS NULL
+        AND sc.deleted_at IS NULL
+        AND tc.deleted_at IS NULL
+    `).all(cardId, cardId);
+
+    if (beforeAfterRelations.length === 0) {
+      return { valid: true };
+    }
+
+    const conflictCards: any[] = [];
+
+    // 각 관계에 대해 검증
+    for (const relation of beforeAfterRelations) {
+      const rel = relation as any;
+      const isSource = rel.source === cardId;
+      const isBefore = rel.typename === 'before';
+
+      // 현재 카드의 새로운 값으로 임시 객체 생성
+      const currentCard = {
+        id: cardId,
+        startdate: isSource ? (field === 'startdate' ? value : rel.source_startdate) : (field === 'startdate' ? value : rel.target_startdate),
+        enddate: isSource ? (field === 'enddate' ? value : rel.source_enddate) : (field === 'enddate' ? value : rel.target_enddate),
+        es: isSource ? (field === 'es' ? value : rel.source_es) : (field === 'es' ? value : rel.target_es),
+        ls: isSource ? (field === 'ls' ? value : rel.source_ls) : (field === 'ls' ? value : rel.target_ls)
+      };
+
+      const otherCard = {
+        id: isSource ? rel.target : rel.source,
+        title: isSource ? rel.target_title : rel.source_title,
+        startdate: isSource ? rel.target_startdate : rel.source_startdate,
+        enddate: isSource ? rel.target_enddate : rel.source_enddate,
+        es: isSource ? rel.target_es : rel.source_es,
+        ls: isSource ? rel.target_ls : rel.source_ls
+      };
+
+      // 날짜 비교 함수
+      const compareDates = (date1: string | null, date2: string | null): number => {
+        if (!date1 && !date2) return 0;
+        if (!date1) return -1;
+        if (!date2) return 1;
+        return new Date(date1).getTime() - new Date(date2).getTime();
+      };
+
+      // before 관계 검증
+      if ((isSource && isBefore) || (!isSource && !isBefore)) {
+        // 현재 카드가 before에 해당하는 경우 (또는 target이 after인 경우)
+
+        // 주요 날짜 검증: startdate vs startdate, enddate vs enddate
+        if (currentCard.startdate && otherCard.startdate) {
+          if (compareDates(currentCard.startdate, otherCard.startdate) > 0) {
+            conflictCards.push({
+              ...otherCard,
+              conflictType: 'startdate',
+              message: `시작일이 ${otherCard.title}의 시작일보다 늦을 수 없습니다.`
+            });
+          }
+        }
+
+        if (currentCard.enddate && otherCard.startdate) {
+          if (compareDates(currentCard.enddate, otherCard.startdate) > 0) {
+            conflictCards.push({
+              ...otherCard,
+              conflictType: 'enddate_vs_startdate',
+              message: `종료일이 ${otherCard.title}의 시작일보다 늦을 수 없습니다.`
+            });
+          }
+        }
+
+        if (currentCard.enddate && otherCard.enddate) {
+          if (compareDates(currentCard.enddate, otherCard.enddate) > 0) {
+            conflictCards.push({
+              ...otherCard,
+              conflictType: 'enddate',
+              message: `종료일이 ${otherCard.title}의 종료일보다 늦을 수 없습니다.`
+            });
+          }
+        }
+
+        // ES/LS 검증
+        if (currentCard.es && otherCard.es) {
+          if (compareDates(currentCard.es, otherCard.es) > 0) {
+            conflictCards.push({
+              ...otherCard,
+              conflictType: 'es',
+              message: `ES(빠른 시작일)가 ${otherCard.title}의 ES보다 늦을 수 없습니다.`
+            });
+          }
+        }
+
+        if (currentCard.ls && otherCard.ls) {
+          if (compareDates(currentCard.ls, otherCard.ls) > 0) {
+            conflictCards.push({
+              ...otherCard,
+              conflictType: 'ls',
+              message: `LS(늦은 시작일)가 ${otherCard.title}의 LS보다 늦을 수 없습니다.`
+            });
+          }
+        }
+      }
+    }
+
+    if (conflictCards.length > 0) {
+      return {
+        valid: false,
+        error: 'before_after_conflict',
+        conflictCards: conflictCards
+      };
+    }
+
+    return { valid: true };
+  } catch (error) {
+    log.error('Failed to validate before/after relationships:', error);
+    return { valid: true }; // 검증 실패 시 업데이트 허용
+  }
+}
 
 // 데이터베이스 초기화
 try {
@@ -83,6 +277,7 @@ interface RelationInput {
 }
 
 ipcMain.handle('create-relation', async (_, data: RelationInput) => {
+  const startTime = Date.now();
   try {
     const now = new Date().toISOString();
 
@@ -112,8 +307,27 @@ ipcMain.handle('create-relation', async (_, data: RelationInput) => {
 
     transact();
 
+    logUsage({
+      action_type: 'create_relation',
+      target_type: 'relation',
+      details: {
+        relationtype_id: data.relationtype_id,
+        source: data.source,
+        target: data.target,
+        project_id: data.project_id
+      },
+      duration_ms: Date.now() - startTime
+    });
+
     return { success: true };
   } catch (error) {
+    logUsage({
+      action_type: 'create_relation',
+      target_type: 'relation',
+      error_message: error instanceof Error ? error.message : String(error),
+      details: data,
+      duration_ms: Date.now() - startTime
+    });
     log.error('Failed to create relation:', error);
     return { success: false, error: 'Failed to create relation' };
   }
@@ -128,7 +342,7 @@ interface Card {
 
 ipcMain.handle('get-cards', async () => {
   try {
-    const cards = db.prepare('SELECT id, title, cardtype FROM CARDS').all() as Card[];
+    const cards = db.prepare('SELECT id, title, cardtype FROM CARDS WHERE deleted_at IS NULL').all() as Card[];
     return { success: true, data: cards };
   } catch (error) {
     log.error('Failed to get cards:', error);
@@ -138,11 +352,19 @@ ipcMain.handle('get-cards', async () => {
 
 // 카드 생성 IPC
 ipcMain.handle('create-card', async (_, payload: { title: string; project_id?: string }) => {
+  const startTime = Date.now();
   try {
     const title = payload.title.trim();
     // duplicate check
     const exists = db.prepare('SELECT id FROM CARDS WHERE title = ?').get(title);
     if (exists) {
+      logUsage({
+        action_type: 'create_card',
+        target_type: 'card',
+        error_message: 'Duplicate title',
+        details: { title },
+        duration_ms: Date.now() - startTime
+      });
       return { success: false, error: 'duplicate-title' };
     }
 
@@ -155,8 +377,23 @@ ipcMain.handle('create-card', async (_, payload: { title: string; project_id?: s
     db.prepare(
       `INSERT INTO CARDS (id, project_id, title, cardtype, createdat) VALUES (?, ?, ?, ?, ?)`,
     ).run(id, payload.project_id ?? null, title, defaultCardTypeId, now);
+
+    logUsage({
+      action_type: 'create_card',
+      target_type: 'card',
+      target_id: id,
+      details: { title, project_id: payload.project_id, cardtype_id: defaultCardTypeId },
+      duration_ms: Date.now() - startTime
+    });
+
     return { success: true, data: { id } };
   } catch (error) {
+    logUsage({
+      action_type: 'create_card',
+      target_type: 'card',
+      error_message: error instanceof Error ? error.message : String(error),
+      duration_ms: Date.now() - startTime
+    });
     log.error('Failed to create card:', error);
     return { success: false, error: 'Failed to create card' };
   }
@@ -192,7 +429,7 @@ ipcMain.handle('get-relations-by-source', async (_, sourceId: string) => {
 // cardtypes & relationtypes list
 ipcMain.handle('get-cardtypes', async () => {
   try {
-    const rows = db.prepare('SELECT cardtype_id, cardtype_name, createdat FROM CARDTYPES').all();
+    const rows = db.prepare('SELECT cardtype_id, cardtype_name, createdat FROM CARDTYPES WHERE deleted_at IS NULL').all();
     return { success: true, data: rows };
   } catch (error) {
     log.error('Failed to get cardtypes:', error);
@@ -202,7 +439,7 @@ ipcMain.handle('get-cardtypes', async () => {
 
 ipcMain.handle('get-relationtypes', async () => {
   try {
-    const rows = db.prepare('SELECT relationtype_id, typename, oppsite, set_value, createdat FROM RELATIONTYPE').all();
+    const rows = db.prepare('SELECT relationtype_id, typename, oppsite, set_value, createdat FROM RELATIONTYPE WHERE deleted_at IS NULL').all();
     return { success: true, data: rows };
   } catch (error) {
     log.error('Failed to get relationtypes:', error);
@@ -238,22 +475,48 @@ ipcMain.handle('update-card-title', async (_, payload: { card_id: string; title:
 // CardType creation
 // ------------------------------------------------------------------
 ipcMain.handle('create-cardtype', async (_, payload: { name: string }) => {
+  const startTime = Date.now();
   try {
     const now = new Date().toISOString();
     const stmt = db.prepare('INSERT INTO CARDTYPES (cardtype_name, createdat) VALUES (?, ?)');
     const info = stmt.run(payload.name.trim(), now);
     const id = info.lastInsertRowid as number;
+
+    logUsage({
+      action_type: 'create_cardtype',
+      target_type: 'cardtype',
+      target_id: String(id),
+      details: { name: payload.name.trim() },
+      duration_ms: Date.now() - startTime
+    });
+
     return { success: true, data: { id } };
   } catch (error) {
     // 카드타입 이름이 이미 존재할 경우 해당 id 반환
     try {
       const row = db.prepare('SELECT cardtype_id FROM CARDTYPES WHERE cardtype_name = ?').get(payload.name.trim());
       if (row) {
+        logUsage({
+          action_type: 'create_cardtype',
+          target_type: 'cardtype',
+          target_id: String((row as any).cardtype_id),
+          details: { name: payload.name.trim(), existing: true },
+          duration_ms: Date.now() - startTime
+        });
         return { success: true, data: { id: (row as any).cardtype_id } };
       }
     } catch (innerErr) {
       log.error('Failed to fetch existing cardtype:', innerErr);
     }
+
+    logUsage({
+      action_type: 'create_cardtype',
+      target_type: 'cardtype',
+      error_message: error instanceof Error ? error.message : String(error),
+      details: { name: payload.name.trim() },
+      duration_ms: Date.now() - startTime
+    });
+
     log.error('Failed to create cardtype:', error);
     return { success: false, error: 'Failed to create cardtype' };
   }
@@ -263,11 +526,19 @@ ipcMain.handle('create-cardtype', async (_, payload: { name: string }) => {
 // RelationType creation
 // ------------------------------------------------------------------
 ipcMain.handle('create-relationtype', async (_, payload: { typename: string; oppsite: string }) => {
+  const startTime = Date.now();
   try {
     const now = new Date().toISOString();
     const typename = payload.typename.trim();
     const opposite = payload.oppsite.trim();
     if(!opposite){
+      logUsage({
+        action_type: 'create_relationtype',
+        target_type: 'relationtype',
+        error_message: 'Empty opposite',
+        details: { typename, opposite },
+        duration_ms: Date.now() - startTime
+      });
       return { success:false, error:'empty-opposite' };
     }
 
@@ -299,8 +570,23 @@ ipcMain.handle('create-relationtype', async (_, payload: { typename: string; opp
     // 3) 메인 타입의 oppsite 값이 정확한지 보정 (중복 삽입으로 인해 catch 에서 가져온 경우 등)
     db.prepare('UPDATE RELATIONTYPE SET oppsite = ? WHERE relationtype_id = ?').run(opposite, mainId);
 
+    logUsage({
+      action_type: 'create_relationtype',
+      target_type: 'relationtype',
+      target_id: String(mainId),
+      details: { typename, opposite, oppId },
+      duration_ms: Date.now() - startTime
+    });
+
     return { success: true, data: { id: mainId } };
   } catch (error) {
+    logUsage({
+      action_type: 'create_relationtype',
+      target_type: 'relationtype',
+      error_message: error instanceof Error ? error.message : String(error),
+      details: payload,
+      duration_ms: Date.now() - startTime
+    });
     log.error('Failed to create relationtype:', error);
     return { success: false, error: 'Failed to create relationtype' };
   }
@@ -320,16 +606,16 @@ ipcMain.handle('rename-cardtype', async (_, payload: { cardtype_id: number; name
 });
 
 // ------------------------------------------------------------------
-// Delete CardType
+// Soft Delete CardType
 // ------------------------------------------------------------------
 ipcMain.handle('delete-cardtype', async (_, cardtype_id: number) => {
   try {
-    db.prepare('DELETE FROM CARDTYPES WHERE cardtype_id = ?').run(cardtype_id);
-    // CARDS.cardtype 는 FK ON DELETE SET NULL 이므로 추가 조치 불필요
+    // 소프트 삭제: deleted_at 필드를 현재 시간으로 설정
+    db.prepare('UPDATE CARDTYPES SET deleted_at = datetime("now") WHERE cardtype_id = ?').run(cardtype_id);
     return { success: true };
   } catch (error) {
-    log.error('Failed to delete cardtype:', error);
-    return { success: false, error: 'Failed to delete cardtype' };
+    log.error('Failed to soft delete cardtype:', error);
+    return { success: false, error: 'Failed to soft delete cardtype' };
   }
 });
 
@@ -370,27 +656,29 @@ ipcMain.handle('rename-relationtype', async (_, payload: { relationtype_id: numb
 });
 
 // ------------------------------------------------------------------
-// Delete RelationType
+// Soft Delete RelationType
 // ------------------------------------------------------------------
 ipcMain.handle('delete-relationtype', async (_, relationtype_id: number) => {
   try {
     const row = db.prepare('SELECT typename, oppsite FROM RELATIONTYPE WHERE relationtype_id = ?').get(relationtype_id) as any;
     if(!row) return { success:false, error:'not-found'};
     const { typename, oppsite } = row;
+
+    // 소프트 삭제: 해당 관계타입과 반대 관계타입 모두 deleted_at 설정
     const tx = db.transaction(() => {
-      db.prepare('DELETE FROM RELATIONTYPE WHERE relationtype_id = ?').run(relationtype_id);
-      db.prepare('DELETE FROM RELATIONTYPE WHERE typename = ?').run(oppsite);
+      db.prepare('UPDATE RELATIONTYPE SET deleted_at = datetime("now") WHERE relationtype_id = ?').run(relationtype_id);
+      db.prepare('UPDATE RELATIONTYPE SET deleted_at = datetime("now") WHERE typename = ?').run(oppsite);
     });
     tx();
     return { success: true };
   } catch (error) {
-    log.error('Failed to delete relationtype:', error);
-    return { success: false, error: 'Failed to delete relationtype' };
+    log.error('Failed to soft delete relationtype:', error);
+    return { success: false, error: 'Failed to soft delete relationtype' };
   }
 });
 
 // ------------------------------------------------------------------
-// Delete Relation
+// Soft Delete Relation
 // ------------------------------------------------------------------
 ipcMain.handle('delete-relation', async (_, relation_id: number) => {
   try {
@@ -408,26 +696,27 @@ ipcMain.handle('delete-relation', async (_, relation_id: number) => {
       }
     }
 
-    const del = db.prepare('DELETE FROM RELATION WHERE relation_id = ?');
-    const delByProps = db.prepare('DELETE FROM RELATION WHERE relationtype_id = ? AND source = ? AND target = ?');
+    // 소프트 삭제: deleted_at 필드 설정
+    const softDel = db.prepare('UPDATE RELATION SET deleted_at = datetime("now") WHERE relation_id = ?');
+    const softDelByProps = db.prepare('UPDATE RELATION SET deleted_at = datetime("now") WHERE relationtype_id = ? AND source = ? AND target = ? AND deleted_at IS NULL');
 
     const tx = db.transaction(() => {
-      del.run(relation_id);
+      softDel.run(relation_id);
       if (oppRelId !== null) {
-        delByProps.run(oppRelId, target, source);
+        softDelByProps.run(oppRelId, target, source);
       }
     });
     tx();
 
     return { success: true };
   } catch (error) {
-    log.error('Failed to delete relation:', error);
-    return { success: false, error: 'Failed to delete relation' };
+    log.error('Failed to soft delete relation:', error);
+    return { success: false, error: 'Failed to soft delete relation' };
   }
 });
 
 // ------------------------------------------------------------------
-// Get all relations (simple list)
+// Get all relations (simple list) - only non-deleted
 // ------------------------------------------------------------------
 ipcMain.handle('get-relations', async () => {
   try {
@@ -438,6 +727,10 @@ ipcMain.handle('get-relations', async () => {
       LEFT JOIN RELATIONTYPE rt ON rt.relationtype_id = r.relationtype_id
       LEFT JOIN CARDS sc ON sc.id = r.source
       LEFT JOIN CARDS tc ON tc.id = r.target
+      WHERE r.deleted_at IS NULL
+        AND rt.deleted_at IS NULL
+        AND sc.deleted_at IS NULL
+        AND tc.deleted_at IS NULL
       ORDER BY r.relation_id DESC
     `).all();
     return { success: true, data: rows };
@@ -460,6 +753,7 @@ ipcMain.handle('get-card-detail', async (_, cardId: string) => {
 
 // 카드 필드 단일 업데이트
 ipcMain.handle('update-card-field', async (_, payload: { card_id: string; field: string; value: unknown }) => {
+  const startTime = Date.now();
   try {
     const allowed = [
       'project_id',
@@ -475,28 +769,93 @@ ipcMain.handle('update-card-field', async (_, payload: { card_id: string; field:
       'enddate',
       'price',
     ];
-    if (!allowed.includes(payload.field)) {
+        if (!allowed.includes(payload.field)) {
+      logUsage({
+        action_type: 'update_card',
+        target_type: 'card',
+        target_id: payload.card_id,
+        error_message: 'Field not allowed',
+        details: { field: payload.field },
+        duration_ms: Date.now() - startTime
+      });
       return { success: false, error: 'field-not-allowed' };
     }
+
+    // Before/After 관계 검증
+    const validation = validateBeforeAfterRelationships(payload.card_id, payload.field, payload.value);
+    if (!validation.valid) {
+      logUsage({
+        action_type: 'update_card',
+        target_type: 'card',
+        target_id: payload.card_id,
+        error_message: 'Before/After relationship conflict',
+        details: { field: payload.field, value: payload.value, conflicts: validation.conflictCards },
+        duration_ms: Date.now() - startTime
+      });
+      return {
+        success: false,
+        error: validation.error,
+        conflictCards: validation.conflictCards
+      };
+    }
+
     const stmt = db.prepare(`UPDATE CARDS SET ${payload.field} = ? WHERE id = ?`);
     stmt.run(payload.value, payload.card_id);
+
+    logUsage({
+      action_type: 'update_card',
+      target_type: 'card',
+      target_id: payload.card_id,
+      details: { field: payload.field, value: payload.value },
+      duration_ms: Date.now() - startTime
+    });
+
     return { success: true };
   } catch (error) {
+    logUsage({
+      action_type: 'update_card',
+      target_type: 'card',
+      target_id: payload.card_id,
+      error_message: error instanceof Error ? error.message : String(error),
+      details: payload,
+      duration_ms: Date.now() - startTime
+    });
     log.error('Failed to update card field:', error);
     return { success: false, error: 'Failed to update card field' };
   }
 });
 
 // ------------------------------------------------------------------
-// Delete Card
+// Soft Delete Card
 // ------------------------------------------------------------------
 ipcMain.handle('delete-card', async (_, card_id: string) => {
+  const startTime = Date.now();
   try {
-    db.prepare('DELETE FROM CARDS WHERE id = ?').run(card_id);
+    // 카드 정보 조회 (로그용)
+    const cardInfo = db.prepare('SELECT title FROM CARDS WHERE id = ?').get(card_id) as any;
+
+    // 소프트 삭제: deleted_at 필드를 현재 시간으로 설정
+    db.prepare('UPDATE CARDS SET deleted_at = datetime("now") WHERE id = ?').run(card_id);
+
+    logUsage({
+      action_type: 'delete_card',
+      target_type: 'card',
+      target_id: card_id,
+      details: { title: cardInfo?.title },
+      duration_ms: Date.now() - startTime
+    });
+
     return { success: true };
   } catch (error) {
-    log.error('Failed to delete card:', error);
-    return { success: false, error: 'Failed to delete card' };
+    logUsage({
+      action_type: 'delete_card',
+      target_type: 'card',
+      target_id: card_id,
+      error_message: error instanceof Error ? error.message : String(error),
+      duration_ms: Date.now() - startTime
+    });
+    log.error('Failed to soft delete card:', error);
+    return { success: false, error: 'Failed to soft delete card' };
   }
 });
 
@@ -529,7 +888,7 @@ ipcMain.handle('create-alias', async (_, payload: { alias_name: string }) => {
       .run(aliasName, now);
 
     return { success: true, data: { alias_id: result.lastInsertRowid, alias_name: aliasName } };
-  } catch (error) {
+  } catch (error: any) {
     if (error.code === 'SQLITE_CONSTRAINT_UNIQUE') {
       // 이미 존재하는 별칭인 경우 해당 별칭 정보 반환
       const existing = db.prepare('SELECT * FROM ALIAS WHERE alias_name = ?').get(payload.alias_name.trim());
@@ -590,7 +949,7 @@ ipcMain.handle('set-card-alias', async (_, payload: { card_id: string; alias_nam
     }
 
     // 별칭이 존재하는지 확인, 없으면 생성
-    let alias = db.prepare('SELECT * FROM ALIAS WHERE alias_name = ?').get(alias_name.trim());
+    let alias = db.prepare('SELECT * FROM ALIAS WHERE alias_name = ?').get(alias_name.trim()) as any;
     if (!alias) {
       const result = db.prepare('INSERT INTO ALIAS (alias_name, createdat) VALUES (?, ?)')
         .run(alias_name.trim(), now);
@@ -619,7 +978,7 @@ ipcMain.handle('add-card-alias', async (_, payload: { card_id: string; alias_nam
     }
 
     // 별칭이 존재하는지 확인, 없으면 생성
-    let alias = db.prepare('SELECT * FROM ALIAS WHERE alias_name = ?').get(alias_name.trim());
+    let alias = db.prepare('SELECT * FROM ALIAS WHERE alias_name = ?').get(alias_name.trim()) as any;
     if (!alias) {
       const result = db.prepare('INSERT INTO ALIAS (alias_name, createdat) VALUES (?, ?)')
         .run(alias_name.trim(), now);
@@ -628,7 +987,7 @@ ipcMain.handle('add-card-alias', async (_, payload: { card_id: string; alias_nam
 
     // 이미 해당 카드에 이 별칭이 있는지 확인
     const existing = db.prepare('SELECT * FROM CURRENT_ALIAS WHERE card_id = ? AND alias_id = ?')
-      .get(card_id, alias.alias_id);
+      .get(card_id, alias.alias_id) as any;
 
     if (existing) {
       return { success: false, error: 'duplicate', message: '이미 있는 별칭입니다.' };
@@ -679,9 +1038,10 @@ if (process.env.NODE_ENV === 'production') {
 const isDebug =
   process.env.NODE_ENV === 'development' || process.env.DEBUG_PROD === 'true';
 
-if (isDebug) {
-  require('electron-debug').default();
-}
+// 개발자 콘솔 자동 열림 비활성화
+// if (isDebug) {
+//   require('electron-debug').default();
+// }
 
 const installExtensions = async () => {
   const installer = require('electron-devtools-installer');
@@ -697,17 +1057,32 @@ const installExtensions = async () => {
 };
 
 function createWindow() {
-  const mainWindow = new BrowserWindow({
+  const isDev = process.env.NODE_ENV === 'development';
+
+    const mainWindow = new BrowserWindow({
     width: 1280,
     height: 720,
     title: 'ForNeed',
-    fullscreen: process.env.NODE_ENV === 'development',
+    show: false, // 모든 모드에서 자동으로 보이지 않도록
+    alwaysOnTop: false,
+    focusable: true,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
+      nodeIntegration: false,
+      contextIsolation: true,
     },
   });
 
   mainWindow.loadURL(resolveHtmlPath('index.html'));
+
+  // ready-to-show 이벤트 후에 포커스 없이 보여주기
+  mainWindow.once('ready-to-show', () => {
+    if (isDev) {
+      mainWindow.showInactive(); // 개발 모드에서는 포커스 없이
+    } else {
+      mainWindow.show(); // 프로덕션에서는 일반적으로 보여주기
+    }
+  });
 }
 
 app.whenReady().then(async () => {
@@ -729,6 +1104,436 @@ app.on('window-all-closed', () => {
     } catch (err) {
       // 이미 종료되었거나 권한 문제일 경우 무시
     }
+  }
+});
+
+// ------------------------------------------------------------------
+// 휴지통 관련 API들
+// ------------------------------------------------------------------
+
+// 삭제된 카드 목록 조회
+ipcMain.handle('get-deleted-cards', async () => {
+  try {
+    const rows = db.prepare(`
+      SELECT c.id, c.title, c.deleted_at, ct.cardtype_name
+      FROM CARDS c
+      LEFT JOIN CARDTYPES ct ON ct.cardtype_id = c.cardtype
+      WHERE c.deleted_at IS NOT NULL
+      ORDER BY c.deleted_at DESC
+    `).all();
+    return { success: true, data: rows };
+  } catch (error) {
+    log.error('Failed to get deleted cards:', error);
+    return { success: false, error: 'Failed to get deleted cards' };
+  }
+});
+
+// 삭제된 관계 목록 조회
+ipcMain.handle('get-deleted-relations', async () => {
+  try {
+    const rows = db.prepare(`
+      SELECT r.relation_id, r.relationtype_id, rt.typename, r.source, sc.title AS source_title,
+             r.target, tc.title AS target_title, r.deleted_at
+      FROM RELATION r
+      LEFT JOIN RELATIONTYPE rt ON rt.relationtype_id = r.relationtype_id
+      LEFT JOIN CARDS sc ON sc.id = r.source
+      LEFT JOIN CARDS tc ON tc.id = r.target
+      WHERE r.deleted_at IS NOT NULL
+      ORDER BY r.deleted_at DESC
+    `).all();
+    return { success: true, data: rows };
+  } catch (error) {
+    log.error('Failed to get deleted relations:', error);
+    return { success: false, error: 'Failed to get deleted relations' };
+  }
+});
+
+// 삭제된 카드타입 목록 조회
+ipcMain.handle('get-deleted-cardtypes', async () => {
+  try {
+    const rows = db.prepare(`
+      SELECT cardtype_id, cardtype_name, deleted_at
+      FROM CARDTYPES
+      WHERE deleted_at IS NOT NULL
+      ORDER BY deleted_at DESC
+    `).all();
+    return { success: true, data: rows };
+  } catch (error) {
+    log.error('Failed to get deleted cardtypes:', error);
+    return { success: false, error: 'Failed to get deleted cardtypes' };
+  }
+});
+
+// 삭제된 관계타입 목록 조회
+ipcMain.handle('get-deleted-relationtypes', async () => {
+  try {
+    const rows = db.prepare(`
+      SELECT relationtype_id, typename, oppsite, deleted_at
+      FROM RELATIONTYPE
+      WHERE deleted_at IS NOT NULL
+      ORDER BY deleted_at DESC
+    `).all();
+    return { success: true, data: rows };
+  } catch (error) {
+    log.error('Failed to get deleted relationtypes:', error);
+    return { success: false, error: 'Failed to get deleted relationtypes' };
+  }
+});
+
+// 개별 복구 함수들
+ipcMain.handle('restore-card', async (_, card_id: string) => {
+  try {
+    db.prepare('UPDATE CARDS SET deleted_at = NULL WHERE id = ?').run(card_id);
+    return { success: true };
+  } catch (error) {
+    log.error('Failed to restore card:', error);
+    return { success: false, error: 'Failed to restore card' };
+  }
+});
+
+ipcMain.handle('restore-relation', async (_, relation_id: number) => {
+  try {
+    db.prepare('UPDATE RELATION SET deleted_at = NULL WHERE relation_id = ?').run(relation_id);
+    return { success: true };
+  } catch (error) {
+    log.error('Failed to restore relation:', error);
+    return { success: false, error: 'Failed to restore relation' };
+  }
+});
+
+ipcMain.handle('restore-cardtype', async (_, cardtype_id: number) => {
+  try {
+    db.prepare('UPDATE CARDTYPES SET deleted_at = NULL WHERE cardtype_id = ?').run(cardtype_id);
+    return { success: true };
+  } catch (error) {
+    log.error('Failed to restore cardtype:', error);
+    return { success: false, error: 'Failed to restore cardtype' };
+  }
+});
+
+ipcMain.handle('restore-relationtype', async (_, relationtype_id: number) => {
+  try {
+    db.prepare('UPDATE RELATIONTYPE SET deleted_at = NULL WHERE relationtype_id = ?').run(relationtype_id);
+    return { success: true };
+  } catch (error) {
+    log.error('Failed to restore relationtype:', error);
+    return { success: false, error: 'Failed to restore relationtype' };
+  }
+});
+
+// 영구 삭제 함수들
+ipcMain.handle('permanent-delete-card', async (_, card_id: string) => {
+  try {
+    db.prepare('DELETE FROM CARDS WHERE id = ?').run(card_id);
+    return { success: true };
+  } catch (error) {
+    log.error('Failed to permanently delete card:', error);
+    return { success: false, error: 'Failed to permanently delete card' };
+  }
+});
+
+ipcMain.handle('permanent-delete-relation', async (_, relation_id: number) => {
+  try {
+    db.prepare('DELETE FROM RELATION WHERE relation_id = ?').run(relation_id);
+    return { success: true };
+  } catch (error) {
+    log.error('Failed to permanently delete relation:', error);
+    return { success: false, error: 'Failed to permanently delete relation' };
+  }
+});
+
+ipcMain.handle('permanent-delete-cardtype', async (_, cardtype_id: number) => {
+  try {
+    db.prepare('DELETE FROM CARDTYPES WHERE cardtype_id = ?').run(cardtype_id);
+    return { success: true };
+  } catch (error) {
+    log.error('Failed to permanently delete cardtype:', error);
+    return { success: false, error: 'Failed to permanently delete cardtype' };
+  }
+});
+
+ipcMain.handle('permanent-delete-relationtype', async (_, relationtype_id: number) => {
+  try {
+    db.prepare('DELETE FROM RELATIONTYPE WHERE relationtype_id = ?').run(relationtype_id);
+    return { success: true };
+  } catch (error) {
+    log.error('Failed to permanently delete relationtype:', error);
+    return { success: false, error: 'Failed to permanently delete relationtype' };
+  }
+});
+
+// 전체 복구 함수들
+ipcMain.handle('restore-all-cards', async () => {
+  try {
+    const result = db.prepare('UPDATE CARDS SET deleted_at = NULL WHERE deleted_at IS NOT NULL').run();
+    return { success: true, data: { restored: result.changes } };
+  } catch (error) {
+    log.error('Failed to restore all cards:', error);
+    return { success: false, error: 'Failed to restore all cards' };
+  }
+});
+
+ipcMain.handle('restore-all-relations', async () => {
+  try {
+    const result = db.prepare('UPDATE RELATION SET deleted_at = NULL WHERE deleted_at IS NOT NULL').run();
+    return { success: true, data: { restored: result.changes } };
+  } catch (error) {
+    log.error('Failed to restore all relations:', error);
+    return { success: false, error: 'Failed to restore all relations' };
+  }
+});
+
+ipcMain.handle('restore-all-cardtypes', async () => {
+  try {
+    const result = db.prepare('UPDATE CARDTYPES SET deleted_at = NULL WHERE deleted_at IS NOT NULL').run();
+    return { success: true, data: { restored: result.changes } };
+  } catch (error) {
+    log.error('Failed to restore all cardtypes:', error);
+    return { success: false, error: 'Failed to restore all cardtypes' };
+  }
+});
+
+ipcMain.handle('restore-all-relationtypes', async () => {
+  try {
+    const result = db.prepare('UPDATE RELATIONTYPE SET deleted_at = NULL WHERE deleted_at IS NOT NULL').run();
+    return { success: true, data: { restored: result.changes } };
+  } catch (error) {
+    log.error('Failed to restore all relationtypes:', error);
+    return { success: false, error: 'Failed to restore all relationtypes' };
+  }
+});
+
+// 전체 영구 삭제 함수들
+ipcMain.handle('clear-all-cards', async () => {
+  try {
+    const result = db.prepare('DELETE FROM CARDS WHERE deleted_at IS NOT NULL').run();
+    return { success: true, data: { deleted: result.changes } };
+  } catch (error) {
+    log.error('Failed to clear all cards:', error);
+    return { success: false, error: 'Failed to clear all cards' };
+  }
+});
+
+ipcMain.handle('clear-all-relations', async () => {
+  try {
+    const result = db.prepare('DELETE FROM RELATION WHERE deleted_at IS NOT NULL').run();
+    return { success: true, data: { deleted: result.changes } };
+  } catch (error) {
+    log.error('Failed to clear all relations:', error);
+    return { success: false, error: 'Failed to clear all relations' };
+  }
+});
+
+ipcMain.handle('clear-all-cardtypes', async () => {
+  try {
+    const result = db.prepare('DELETE FROM CARDTYPES WHERE deleted_at IS NOT NULL').run();
+    return { success: true, data: { deleted: result.changes } };
+  } catch (error) {
+    log.error('Failed to clear all cardtypes:', error);
+    return { success: false, error: 'Failed to clear all cardtypes' };
+  }
+});
+
+ipcMain.handle('clear-all-relationtypes', async () => {
+  try {
+    const result = db.prepare('DELETE FROM RELATIONTYPE WHERE deleted_at IS NOT NULL').run();
+    return { success: true, data: { deleted: result.changes } };
+  } catch (error) {
+    log.error('Failed to clear all relationtypes:', error);
+    return { success: false, error: 'Failed to clear all relationtypes' };
+  }
+});
+
+// ------------------------------------------------------------------
+// 사용로그 분석 API들
+// ------------------------------------------------------------------
+
+// 페이지 방문 로깅
+ipcMain.handle('log-page-visit', async (_, page: string) => {
+  logUsage({
+    action_type: 'navigate_to_page',
+    target_type: 'page',
+    target_id: page
+  });
+  return { success: true };
+});
+
+// 기본 통계 조회
+ipcMain.handle('get-usage-stats', async () => {
+  try {
+    const stats = {
+      // 기본 카운트
+      total_actions: db.prepare('SELECT COUNT(*) as count FROM USAGE_LOGS').get() as any,
+      total_sessions: db.prepare('SELECT COUNT(DISTINCT session_id) as count FROM USAGE_LOGS').get() as any,
+      total_cards_created: db.prepare("SELECT COUNT(*) as count FROM USAGE_LOGS WHERE action_type = 'create_card' AND error_message IS NULL").get() as any,
+      total_relations_created: db.prepare("SELECT COUNT(*) as count FROM USAGE_LOGS WHERE action_type = 'create_relation' AND error_message IS NULL").get() as any,
+      total_cards_deleted: db.prepare("SELECT COUNT(*) as count FROM USAGE_LOGS WHERE action_type = 'delete_card' AND error_message IS NULL").get() as any,
+
+      // 에러 통계
+      total_errors: db.prepare('SELECT COUNT(*) as count FROM USAGE_LOGS WHERE error_message IS NOT NULL').get() as any,
+
+      // 최근 7일 활동
+      last_7_days_actions: db.prepare(`
+        SELECT COUNT(*) as count
+        FROM USAGE_LOGS
+        WHERE datetime(timestamp) >= datetime('now', '-7 days')
+      `).get() as any,
+
+      // 평균 세션 시간 (분)
+      avg_session_duration: db.prepare(`
+        SELECT AVG(session_duration) as avg_minutes
+        FROM (
+          SELECT
+            session_id,
+            (julianday(MAX(timestamp)) - julianday(MIN(timestamp))) * 24 * 60 as session_duration
+          FROM USAGE_LOGS
+          GROUP BY session_id
+          HAVING COUNT(*) > 1
+        )
+      `).get() as any
+    };
+
+    return { success: true, data: stats };
+  } catch (error) {
+    log.error('Failed to get usage stats:', error);
+    return { success: false, error: 'Failed to get usage stats' };
+  }
+});
+
+// 기능별 사용 빈도
+ipcMain.handle('get-action-frequency', async () => {
+  try {
+    const frequency = db.prepare(`
+      SELECT
+        action_type,
+        COUNT(*) as count,
+        COUNT(CASE WHEN error_message IS NULL THEN 1 END) as success_count,
+        COUNT(CASE WHEN error_message IS NOT NULL THEN 1 END) as error_count,
+        AVG(duration_ms) as avg_duration_ms
+      FROM USAGE_LOGS
+      GROUP BY action_type
+      ORDER BY count DESC
+    `).all();
+
+    return { success: true, data: frequency };
+  } catch (error) {
+    log.error('Failed to get action frequency:', error);
+    return { success: false, error: 'Failed to get action frequency' };
+  }
+});
+
+// 시간대별 활동 패턴
+ipcMain.handle('get-hourly-activity', async () => {
+  try {
+    const activity = db.prepare(`
+      SELECT
+        strftime('%H', timestamp) as hour,
+        COUNT(*) as action_count
+      FROM USAGE_LOGS
+      WHERE datetime(timestamp) >= datetime('now', '-30 days')
+      GROUP BY strftime('%H', timestamp)
+      ORDER BY hour
+    `).all();
+
+    return { success: true, data: activity };
+  } catch (error) {
+    log.error('Failed to get hourly activity:', error);
+    return { success: false, error: 'Failed to get hourly activity' };
+  }
+});
+
+// 일별 활동 패턴 (최근 30일)
+ipcMain.handle('get-daily-activity', async () => {
+  try {
+    const activity = db.prepare(`
+      SELECT
+        DATE(timestamp) as date,
+        COUNT(*) as action_count,
+        COUNT(DISTINCT session_id) as session_count,
+        COUNT(CASE WHEN action_type = 'create_card' THEN 1 END) as cards_created,
+        COUNT(CASE WHEN action_type = 'create_relation' THEN 1 END) as relations_created
+      FROM USAGE_LOGS
+      WHERE datetime(timestamp) >= datetime('now', '-30 days')
+      GROUP BY DATE(timestamp)
+      ORDER BY date DESC
+    `).all();
+
+    return { success: true, data: activity };
+  } catch (error) {
+    log.error('Failed to get daily activity:', error);
+    return { success: false, error: 'Failed to get daily activity' };
+  }
+});
+
+// 에러 분석
+ipcMain.handle('get-error-analysis', async () => {
+  try {
+    const errors = db.prepare(`
+      SELECT
+        action_type,
+        error_message,
+        COUNT(*) as count,
+        MAX(timestamp) as last_occurrence
+      FROM USAGE_LOGS
+      WHERE error_message IS NOT NULL
+      GROUP BY action_type, error_message
+      ORDER BY count DESC, last_occurrence DESC
+    `).all();
+
+    return { success: true, data: errors };
+  } catch (error) {
+    log.error('Failed to get error analysis:', error);
+    return { success: false, error: 'Failed to get error analysis' };
+  }
+});
+
+// 최근 활동 로그
+ipcMain.handle('get-recent-logs', async (_, limit: number = 100) => {
+  try {
+    const logs = db.prepare(`
+      SELECT
+        timestamp,
+        action_type,
+        target_type,
+        target_id,
+        details,
+        duration_ms,
+        error_message
+      FROM USAGE_LOGS
+      ORDER BY timestamp DESC
+      LIMIT ?
+    `).all(limit);
+
+    return { success: true, data: logs };
+  } catch (error) {
+    log.error('Failed to get recent logs:', error);
+    return { success: false, error: 'Failed to get recent logs' };
+  }
+});
+
+// 세션별 분석
+ipcMain.handle('get-session-analysis', async () => {
+  try {
+    const sessions = db.prepare(`
+      SELECT
+        session_id,
+        MIN(timestamp) as start_time,
+        MAX(timestamp) as end_time,
+        COUNT(*) as action_count,
+        (julianday(MAX(timestamp)) - julianday(MIN(timestamp))) * 24 * 60 as duration_minutes,
+        COUNT(CASE WHEN action_type = 'create_card' THEN 1 END) as cards_created,
+        COUNT(CASE WHEN action_type = 'create_relation' THEN 1 END) as relations_created,
+        COUNT(CASE WHEN error_message IS NOT NULL THEN 1 END) as errors
+      FROM USAGE_LOGS
+      GROUP BY session_id
+      ORDER BY start_time DESC
+      LIMIT 50
+    `).all();
+
+    return { success: true, data: sessions };
+  } catch (error) {
+    log.error('Failed to get session analysis:', error);
+    return { success: false, error: 'Failed to get session analysis' };
   }
 });
 

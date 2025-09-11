@@ -184,4 +184,77 @@ try {
   console.log('Card migration error:', error);
 }
 
+// 소프트 삭제를 위한 deleted_at 컬럼 추가 마이그레이션
+try {
+  console.log('Adding deleted_at columns for soft delete...');
+
+  // CARDS 테이블에 deleted_at 컬럼 추가
+  try {
+    db.exec('ALTER TABLE CARDS ADD COLUMN deleted_at TEXT');
+    console.log('Added deleted_at column to CARDS table');
+  } catch (error) {
+    // 이미 존재하는 경우 무시
+  }
+
+  // CARDTYPES 테이블에 deleted_at 컬럼 추가
+  try {
+    db.exec('ALTER TABLE CARDTYPES ADD COLUMN deleted_at TEXT');
+    console.log('Added deleted_at column to CARDTYPES table');
+  } catch (error) {
+    // 이미 존재하는 경우 무시
+  }
+
+  // RELATION 테이블에 deleted_at 컬럼 추가
+  try {
+    db.exec('ALTER TABLE RELATION ADD COLUMN deleted_at TEXT');
+    console.log('Added deleted_at column to RELATION table');
+  } catch (error) {
+    // 이미 존재하는 경우 무시
+  }
+
+  // RELATIONTYPE 테이블에 deleted_at 컬럼 추가
+  try {
+    db.exec('ALTER TABLE RELATIONTYPE ADD COLUMN deleted_at TEXT');
+    console.log('Added deleted_at column to RELATIONTYPE table');
+  } catch (error) {
+    // 이미 존재하는 경우 무시
+  }
+
+  console.log('Soft delete migration completed');
+} catch (error) {
+  console.log('Soft delete migration error:', error);
+}
+
+// 사용로그 테이블 생성
+try {
+  console.log('Creating usage logs table...');
+
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS USAGE_LOGS (
+      log_id INTEGER PRIMARY KEY AUTOINCREMENT,
+      timestamp TEXT NOT NULL,
+      session_id TEXT NOT NULL,
+      action_type TEXT NOT NULL,
+      target_type TEXT,
+      target_id TEXT,
+      details TEXT,
+      duration_ms INTEGER,
+      error_message TEXT,
+      created_at TEXT DEFAULT (datetime('now'))
+    )
+  `);
+
+  // 로그 조회 성능을 위한 인덱스 생성
+  db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_usage_logs_timestamp ON USAGE_LOGS(timestamp);
+    CREATE INDEX IF NOT EXISTS idx_usage_logs_session ON USAGE_LOGS(session_id);
+    CREATE INDEX IF NOT EXISTS idx_usage_logs_action ON USAGE_LOGS(action_type);
+    CREATE INDEX IF NOT EXISTS idx_usage_logs_target ON USAGE_LOGS(target_type);
+  `);
+
+  console.log('Usage logs table created successfully');
+} catch (error) {
+  console.log('Usage logs table creation error:', error);
+}
+
 export default db;
