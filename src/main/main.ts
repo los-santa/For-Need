@@ -612,7 +612,7 @@ ipcMain.handle('rename-cardtype', async (_, payload: { cardtype_id: number; name
 ipcMain.handle('delete-cardtype', async (_, cardtype_id: number) => {
   try {
     // 소프트 삭제: deleted_at 필드를 현재 시간으로 설정
-    db.prepare('UPDATE CARDTYPES SET deleted_at = datetime("now") WHERE cardtype_id = ?').run(cardtype_id);
+    db.prepare('UPDATE CARDTYPES SET deleted_at = datetime(\'now\') WHERE cardtype_id = ?').run(cardtype_id);
     return { success: true };
   } catch (error) {
     log.error('Failed to soft delete cardtype:', error);
@@ -667,8 +667,8 @@ ipcMain.handle('delete-relationtype', async (_, relationtype_id: number) => {
 
     // 소프트 삭제: 해당 관계타입과 반대 관계타입 모두 deleted_at 설정
     const tx = db.transaction(() => {
-      db.prepare('UPDATE RELATIONTYPE SET deleted_at = datetime("now") WHERE relationtype_id = ?').run(relationtype_id);
-      db.prepare('UPDATE RELATIONTYPE SET deleted_at = datetime("now") WHERE typename = ?').run(oppsite);
+      db.prepare('UPDATE RELATIONTYPE SET deleted_at = datetime(\'now\') WHERE relationtype_id = ?').run(relationtype_id);
+      db.prepare('UPDATE RELATIONTYPE SET deleted_at = datetime(\'now\') WHERE typename = ?').run(oppsite);
     });
     tx();
     return { success: true };
@@ -698,8 +698,8 @@ ipcMain.handle('delete-relation', async (_, relation_id: number) => {
     }
 
     // 소프트 삭제: deleted_at 필드 설정
-    const softDel = db.prepare('UPDATE RELATION SET deleted_at = datetime("now") WHERE relation_id = ?');
-    const softDelByProps = db.prepare('UPDATE RELATION SET deleted_at = datetime("now") WHERE relationtype_id = ? AND source = ? AND target = ? AND deleted_at IS NULL');
+    const softDel = db.prepare('UPDATE RELATION SET deleted_at = datetime(\'now\') WHERE relation_id = ?');
+    const softDelByProps = db.prepare('UPDATE RELATION SET deleted_at = datetime(\'now\') WHERE relationtype_id = ? AND source = ? AND target = ? AND deleted_at IS NULL');
 
     const tx = db.transaction(() => {
       softDel.run(relation_id);
@@ -836,7 +836,7 @@ ipcMain.handle('delete-card', async (_, card_id: string) => {
     const cardInfo = db.prepare('SELECT title FROM CARDS WHERE id = ?').get(card_id) as any;
 
     // 소프트 삭제: deleted_at 필드를 현재 시간으로 설정
-    db.prepare('UPDATE CARDS SET deleted_at = datetime("now") WHERE id = ?').run(card_id);
+    db.prepare('UPDATE CARDS SET deleted_at = datetime(\'now\') WHERE id = ?').run(card_id);
 
     logUsage({
       action_type: 'delete_card',
