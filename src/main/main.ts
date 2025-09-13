@@ -369,17 +369,36 @@ ipcMain.handle('create-card', async (_, payload: { title: string; project_id?: s
   const startTime = Date.now();
   try {
     const title = payload.title.trim();
-    // duplicate check
-    const exists = db.prepare('SELECT id FROM CARDS WHERE title = ?').get(title);
+    // 카드명 중복 확인 (프로젝트별)
+    let duplicateCheckQuery: string;
+    let duplicateCheckParams: any[];
+
+    if (payload.project_id) {
+      // 같은 프로젝트 내에서 중복 확인
+      duplicateCheckQuery = `
+        SELECT id FROM CARDS 
+        WHERE title = ? AND project_id = ? AND deleted_at IS NULL
+      `;
+      duplicateCheckParams = [title, payload.project_id];
+    } else {
+      // 프로젝트가 없는 카드들 중에서 중복 확인
+      duplicateCheckQuery = `
+        SELECT id FROM CARDS 
+        WHERE title = ? AND project_id IS NULL AND deleted_at IS NULL
+      `;
+      duplicateCheckParams = [title];
+    }
+
+    const exists = db.prepare(duplicateCheckQuery).get(...duplicateCheckParams);
     if (exists) {
       logUsage({
         action_type: 'create_card',
         target_type: 'card',
-        error_message: 'Duplicate title',
-        details: { title },
+        error_message: 'Duplicate title in project',
+        details: { title, project_id: payload.project_id },
         duration_ms: Date.now() - startTime
       });
-      return { success: false, error: 'duplicate-title' };
+      return { success: false, error: 'duplicate-title-in-project' };
     }
 
     // 'todo' 카드타입 ID 가져오기
@@ -1892,6 +1911,173 @@ ipcMain.handle('get-habit-logs', async (event, cardId: string, limit?: number) =
     return { success: false, error: 'Failed to get habit logs' };
   }
 });
+
+// =========================
+// 프로젝트 관리 IPC 핸들러들
+// =========================
+
+// 모든 프로젝트 조회
+ipcMain.handle('get-projects', async () => {
+  try {
+    const projects = db.prepare(`
+      SELECT 
+        p.*,
+        COUNT(c.id) as card_count
+      FROM PROJECTS p
+      LEFT JOIN CARDS c ON p.project_id = c.project_id AND c.deleted_at IS NULL
+      GROUP BY p.project_id, p.project_name, p.createdat
+      ORDER BY p.createdat DESC
+    `).all();
+    
+    return { success: true, data: projects };
+  } catch (error) {
+    log.error('Failed to get projects:', error);
+    return { success: false, error: 'Failed to get projects' };
+  }
+});
+
+// 프로젝트 생성
+ipcMain.handle('create-project', async (event, projectName: string) => {
+  try {
+    logUsage({
+      action_type: 'create-project',
+      target_type: 'project',
+      details: { projectName }
+    });
+
+    // 프로젝트명 중복 확인
+    const existingProject = db.prepare('SELECT project_id FROM PROJECTS WHERE project_name = ?').get(projectName);
+    if (existingProject) {
+      return { success: false, error: 'Project name already exists' };
+    }
+
+    const projectId = randomUUID();
+    const stmt = db.prepare(`
+      INSERT INTO PROJECTS (project_id, project_name, createdat)
+      VALUES (?, ?, datetime('now'))
+    `);
+    
+    stmt.run(projectId, projectName);
+    
+    return { success: true, data: { project_id: projectId, project_name: projectName } };
+  } catch (error) {
+    log.error('Failed to create project:', error);
+    logUsage({
+      action_type: 'create-project',
+      error_message: String(error)
+    });
+    return { success: false, error: 'Failed to create project' };
+  }
+});
+
+// 프로젝트 수정
+ipcMain.handle('update-project', async (event, projectId: string, projectName: string) => {
+  try {
+    logUsage({
+      action_type: 'update-project',
+      target_type: 'project',
+      target_id: projectId,
+      details: { projectName }
+    });
+
+    // 다른 프로젝트에 같은 이름이 있는지 확인
+    const existingProject = db.prepare(
+      'SELECT project_id FROM PROJECTS WHERE project_name = ? AND project_id != ?'
+    ).get(projectName, projectId);
+    
+    if (existingProject) {
+      return { success: false, error: 'Project name already exists' };
+    }
+
+    const stmt = db.prepare(`
+      UPDATE PROJECTS 
+      SET project_name = ? 
+      WHERE project_id = ?
+    `);
+    
+    const result = stmt.run(projectName, projectId);
+    
+    if (result.changes === 0) {
+      return { success: false, error: 'Project not found' };
+    }
+    
+    return { success: true, data: { project_id: projectId, project_name: projectName } };
+  } catch (error) {
+    log.error('Failed to update project:', error);
+    logUsage({
+      action_type: 'update-project',
+      error_message: String(error)
+    });
+    return { success: false, error: 'Failed to update project' };
+  }
+});
+
+// 프로젝트 삭제
+ipcMain.handle('delete-project', async (event, projectId: string) => {
+  try {
+    logUsage({
+      action_type: 'delete-project',
+      target_type: 'project',
+      target_id: projectId
+    });
+
+    // 트랜잭션으로 프로젝트와 연결된 카드들 처리
+    const transaction = db.transaction(() => {
+      // 프로젝트에 속한 카드들의 project_id를 NULL로 설정
+      db.prepare('UPDATE CARDS SET project_id = NULL WHERE project_id = ?').run(projectId);
+      
+      // 프로젝트 삭제
+      const result = db.prepare('DELETE FROM PROJECTS WHERE project_id = ?').run(projectId);
+      
+      return result;
+    });
+    
+    const result = transaction();
+    
+    if (result.changes === 0) {
+      return { success: false, error: 'Project not found' };
+    }
+    
+    return { success: true, data: { project_id: projectId } };
+  } catch (error) {
+    log.error('Failed to delete project:', error);
+    logUsage({
+      action_type: 'delete-project',
+      error_message: String(error)
+    });
+    return { success: false, error: 'Failed to delete project' };
+  }
+});
+
+// 특정 프로젝트의 카드들 조회
+ipcMain.handle('get-project-cards', async (event, projectId: string) => {
+  try {
+    const cards = db.prepare(`
+      SELECT 
+        c.*,
+        ct.cardtype_name,
+        COUNT(r.id) as relation_count
+      FROM CARDS c
+      LEFT JOIN CARDTYPES ct ON c.cardtype = ct.cardtype_id
+      LEFT JOIN RELATIONS r ON (c.id = r.source_card OR c.id = r.target_card) AND r.deleted_at IS NULL
+      WHERE c.project_id = ? AND c.deleted_at IS NULL
+      GROUP BY c.id
+      ORDER BY c.createdat DESC
+    `).all(projectId);
+    
+    return { success: true, data: cards };
+  } catch (error) {
+    log.error('Failed to get project cards:', error);
+    return { success: false, error: 'Failed to get project cards' };
+  }
+});
+
+// =========================
+// 카드명 중복방지 기능 추가
+// =========================
+
+// 기존 create-card 핸들러에 중복방지 로직 추가를 위해 수정
+// (먼저 기존 create-card 핸들러를 찾아서 수정해야 함)
 
 app.on('activate', () => {
   if (BrowserWindow.getAllWindows().length === 0) {

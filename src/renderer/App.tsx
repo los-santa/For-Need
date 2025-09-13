@@ -42,6 +42,387 @@ function GenericTable({ data }: { data: Record<string, unknown>[] }) {
   );
 }
 
+// 프로젝트 관리 컴포넌트
+function ProjectManage() {
+  const [projects, setProjects] = useState<Project[]>([]);
+  const [selectedProject, setSelectedProject] = useState<Project | null>(null);
+  const [projectCards, setProjectCards] = useState<any[]>([]);
+  const [showCreateModal, setShowCreateModal] = useState(false);
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [projectName, setProjectName] = useState('');
+  const [editingProject, setEditingProject] = useState<Project | null>(null);
+
+  // 모든 프로젝트 조회
+  const fetchProjects = async () => {
+    try {
+      const result = await window.electron.ipcRenderer.invoke('get-projects');
+      if (result.success) {
+        setProjects(result.data);
+      }
+    } catch (error) {
+      console.error('Failed to fetch projects:', error);
+    }
+  };
+
+  // 특정 프로젝트의 카드들 조회
+  const fetchProjectCards = async (projectId: string) => {
+    try {
+      const result = await window.electron.ipcRenderer.invoke('get-project-cards', projectId);
+      if (result.success) {
+        setProjectCards(result.data);
+      }
+    } catch (error) {
+      console.error('Failed to fetch project cards:', error);
+    }
+  };
+
+  // 프로젝트 생성
+  const createProject = async () => {
+    if (!projectName.trim()) return;
+    
+    try {
+      const result = await window.electron.ipcRenderer.invoke('create-project', projectName.trim());
+      if (result.success) {
+        setProjectName('');
+        setShowCreateModal(false);
+        fetchProjects();
+      } else {
+        alert(result.error || '프로젝트 생성에 실패했습니다');
+      }
+    } catch (error) {
+      console.error('Failed to create project:', error);
+      alert('프로젝트 생성에 실패했습니다');
+    }
+  };
+
+  // 프로젝트 수정
+  const updateProject = async () => {
+    if (!editingProject || !projectName.trim()) return;
+    
+    try {
+      const result = await window.electron.ipcRenderer.invoke(
+        'update-project', 
+        editingProject.project_id, 
+        projectName.trim()
+      );
+      if (result.success) {
+        setProjectName('');
+        setShowEditModal(false);
+        setEditingProject(null);
+        fetchProjects();
+        // 선택된 프로젝트 업데이트
+        if (selectedProject?.project_id === editingProject.project_id) {
+          setSelectedProject({ ...editingProject, project_name: projectName.trim() });
+        }
+      } else {
+        alert(result.error || '프로젝트 수정에 실패했습니다');
+      }
+    } catch (error) {
+      console.error('Failed to update project:', error);
+      alert('프로젝트 수정에 실패했습니다');
+    }
+  };
+
+  // 프로젝트 삭제
+  const deleteProject = async (project: Project) => {
+    if (!confirm(`정말로 "${project.project_name}" 프로젝트를 삭제하시겠습니까?\n프로젝트에 속한 카드들은 "프로젝트 없음" 상태가 됩니다.`)) {
+      return;
+    }
+    
+    try {
+      const result = await window.electron.ipcRenderer.invoke('delete-project', project.project_id);
+      if (result.success) {
+        fetchProjects();
+        if (selectedProject?.project_id === project.project_id) {
+          setSelectedProject(null);
+          setProjectCards([]);
+        }
+      } else {
+        alert(result.error || '프로젝트 삭제에 실패했습니다');
+      }
+    } catch (error) {
+      console.error('Failed to delete project:', error);
+      alert('프로젝트 삭제에 실패했습니다');
+    }
+  };
+
+  // 프로젝트 선택
+  const selectProject = (project: Project) => {
+    setSelectedProject(project);
+    fetchProjectCards(project.project_id);
+  };
+
+  // 수정 모달 열기
+  const openEditModal = (project: Project) => {
+    setEditingProject(project);
+    setProjectName(project.project_name);
+    setShowEditModal(true);
+  };
+
+  useEffect(() => {
+    fetchProjects();
+  }, []);
+
+  return (
+    <div style={{ height: '100vh', overflowY: 'auto', padding: '20px' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+        <h2>프로젝트 관리</h2>
+        <button
+          onClick={() => setShowCreateModal(true)}
+          style={{
+            padding: '8px 16px',
+            backgroundColor: '#4CAF50',
+            color: 'white',
+            border: 'none',
+            borderRadius: '4px',
+            cursor: 'pointer'
+          }}
+        >
+          새 프로젝트 추가
+        </button>
+      </div>
+
+      <div style={{ display: 'flex', gap: '20px', height: 'calc(100vh - 120px)' }}>
+        {/* 프로젝트 목록 */}
+        <div style={{ flex: '0 0 300px', border: '1px solid #333', borderRadius: '4px', padding: '10px' }}>
+          <h3>프로젝트 목록 ({projects.length}개)</h3>
+          <div style={{ maxHeight: 'calc(100% - 50px)', overflowY: 'auto' }}>
+            {projects.map((project) => (
+              <div
+                key={project.project_id}
+                style={{
+                  padding: '12px',
+                  margin: '8px 0',
+                  border: selectedProject?.project_id === project.project_id ? '2px solid #4CAF50' : '1px solid #555',
+                  borderRadius: '4px',
+                  cursor: 'pointer',
+                  backgroundColor: selectedProject?.project_id === project.project_id ? '#1a4d1a' : 'transparent'
+                }}
+                onClick={() => selectProject(project)}
+              >
+                <div style={{ fontWeight: 'bold' }}>{project.project_name}</div>
+                <div style={{ fontSize: '0.8em', color: '#888', marginTop: '4px' }}>
+                  카드: {(project as any).card_count || 0}개
+                </div>
+                <div style={{ fontSize: '0.7em', color: '#666' }}>
+                  생성: {new Date(project.createdat).toLocaleDateString('ko-KR')}
+                </div>
+                <div style={{ marginTop: '8px', display: 'flex', gap: '8px' }}>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      openEditModal(project);
+                    }}
+                    style={{
+                      padding: '4px 8px',
+                      backgroundColor: '#2196F3',
+                      color: 'white',
+                      border: 'none',
+                      borderRadius: '2px',
+                      fontSize: '0.8em',
+                      cursor: 'pointer'
+                    }}
+                  >
+                    수정
+                  </button>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      deleteProject(project);
+                    }}
+                    style={{
+                      padding: '4px 8px',
+                      backgroundColor: '#f44336',
+                      color: 'white',
+                      border: 'none',
+                      borderRadius: '2px',
+                      fontSize: '0.8em',
+                      cursor: 'pointer'
+                    }}
+                  >
+                    삭제
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* 선택된 프로젝트의 카드 목록 */}
+        <div style={{ flex: '1', border: '1px solid #333', borderRadius: '4px', padding: '10px' }}>
+          {selectedProject ? (
+            <>
+              <h3>"{selectedProject.project_name}" 프로젝트의 카드들 ({projectCards.length}개)</h3>
+              <div style={{ maxHeight: 'calc(100% - 50px)', overflowY: 'auto' }}>
+                {projectCards.length > 0 ? (
+                  <div style={{ display: 'grid', gap: '12px' }}>
+                    {projectCards.map((card) => (
+                      <div
+                        key={card.id}
+                        style={{
+                          padding: '12px',
+                          border: '1px solid #555',
+                          borderRadius: '4px',
+                          backgroundColor: '#1a1a1a'
+                        }}
+                      >
+                        <div style={{ fontWeight: 'bold', marginBottom: '8px' }}>
+                          {card.title}
+                        </div>
+                        {card.content && (
+                          <div style={{ fontSize: '0.9em', color: '#ccc', marginBottom: '8px' }}>
+                            {card.content.length > 100 
+                              ? `${card.content.substring(0, 100)}...`
+                              : card.content
+                            }
+                          </div>
+                        )}
+                        <div style={{ display: 'flex', gap: '12px', fontSize: '0.8em', color: '#888' }}>
+                          <span>타입: {card.cardtype_name || '없음'}</span>
+                          <span>관계: {card.relation_count || 0}개</span>
+                          <span>생성: {new Date(card.createdat).toLocaleDateString('ko-KR')}</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p style={{ color: '#888', textAlign: 'center', marginTop: '50px' }}>
+                    이 프로젝트에 카드가 없습니다.
+                  </p>
+                )}
+              </div>
+            </>
+          ) : (
+            <div style={{ textAlign: 'center', marginTop: '100px', color: '#888' }}>
+              <h3>프로젝트를 선택하면 해당 프로젝트의 카드들을 볼 수 있습니다</h3>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* 프로젝트 생성 모달 */}
+      {showCreateModal && (
+        <div style={{
+          position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+          backgroundColor: 'rgba(0,0,0,0.8)', display: 'flex',
+          alignItems: 'center', justifyContent: 'center', zIndex: 1000
+        }}>
+          <div style={{
+            backgroundColor: '#2a2a2a', padding: '30px', borderRadius: '8px',
+            width: '400px', border: '1px solid #555'
+          }}>
+            <h3>새 프로젝트 만들기</h3>
+            <input
+              type="text"
+              value={projectName}
+              onChange={(e) => setProjectName(e.target.value)}
+              placeholder="프로젝트 이름을 입력하세요"
+              style={{
+                width: '100%', padding: '12px', margin: '10px 0',
+                backgroundColor: '#1a1a1a', color: 'white',
+                border: '1px solid #555', borderRadius: '4px'
+              }}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') createProject();
+                if (e.key === 'Escape') {
+                  setShowCreateModal(false);
+                  setProjectName('');
+                }
+              }}
+              autoFocus
+            />
+            <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end', marginTop: '20px' }}>
+              <button
+                onClick={() => {
+                  setShowCreateModal(false);
+                  setProjectName('');
+                }}
+                style={{
+                  padding: '8px 16px', backgroundColor: '#666',
+                  color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer'
+                }}
+              >
+                취소
+              </button>
+              <button
+                onClick={createProject}
+                style={{
+                  padding: '8px 16px', backgroundColor: '#4CAF50',
+                  color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer'
+                }}
+                disabled={!projectName.trim()}
+              >
+                생성
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 프로젝트 수정 모달 */}
+      {showEditModal && (
+        <div style={{
+          position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+          backgroundColor: 'rgba(0,0,0,0.8)', display: 'flex',
+          alignItems: 'center', justifyContent: 'center', zIndex: 1000
+        }}>
+          <div style={{
+            backgroundColor: '#2a2a2a', padding: '30px', borderRadius: '8px',
+            width: '400px', border: '1px solid #555'
+          }}>
+            <h3>프로젝트 수정</h3>
+            <input
+              type="text"
+              value={projectName}
+              onChange={(e) => setProjectName(e.target.value)}
+              placeholder="새 프로젝트 이름을 입력하세요"
+              style={{
+                width: '100%', padding: '12px', margin: '10px 0',
+                backgroundColor: '#1a1a1a', color: 'white',
+                border: '1px solid #555', borderRadius: '4px'
+              }}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') updateProject();
+                if (e.key === 'Escape') {
+                  setShowEditModal(false);
+                  setProjectName('');
+                  setEditingProject(null);
+                }
+              }}
+              autoFocus
+            />
+            <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end', marginTop: '20px' }}>
+              <button
+                onClick={() => {
+                  setShowEditModal(false);
+                  setProjectName('');
+                  setEditingProject(null);
+                }}
+                style={{
+                  padding: '8px 16px', backgroundColor: '#666',
+                  color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer'
+                }}
+              >
+                취소
+              </button>
+              <button
+                onClick={updateProject}
+                style={{
+                  padding: '8px 16px', backgroundColor: '#4CAF50',
+                  color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer'
+                }}
+                disabled={!projectName.trim()}
+              >
+                수정
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function Projects() {
   const [projects, setProjects] = useState<Project[]>([]);
   const [name, setName] = useState('');
@@ -266,6 +647,13 @@ function Home() {
   const [dateFilter, setDateFilter] = useState({
     enabled: false,
     type: 'has-date' // 'has-date' (날짜 지정됨), 'no-date' (날짜 미지정)
+  });
+
+  // 서브카드 전용 정렬 필터 상태
+  const [subcardsOnlyFilter, setSubcardsOnlyFilter] = useState({
+    enabled: false,
+    relationTypeName: '', // 선택된 관계 타입 이름
+    targetCardTitle: '' // 목표 카드 제목
   });
 
   // 카드 검색 상태
@@ -508,6 +896,41 @@ function Home() {
     ).length;
   };
 
+  // 서브카드 체인 필터링 로직: 특정 관계타입으로 target 카드에 연결되는 모든 카드들을 찾기
+  const findCardsInChainToTarget = (targetCardTitle: string, relationTypeName: string): string[] => {
+    if (!targetCardTitle || !relationTypeName) return [];
+
+    // 목표 카드 찾기
+    const targetCard = cards.find(card => card.title.toLowerCase() === targetCardTitle.toLowerCase());
+    if (!targetCard) return [];
+
+    const connectedCardIds = new Set<string>();
+    
+    // BFS를 사용해 역방향으로 체인을 따라가기
+    const queue = [targetCard.id];
+    const visited = new Set<string>([targetCard.id]);
+    
+    while (queue.length > 0) {
+      const currentCardId = queue.shift()!;
+      
+      // 현재 카드로 향하는 지정된 관계타입의 모든 관계들 찾기
+      const incomingRelations = allRelations.filter(rel => 
+        rel.target === currentCardId && 
+        rel.typename === relationTypeName
+      );
+      
+      for (const relation of incomingRelations) {
+        if (!visited.has(relation.source)) {
+          visited.add(relation.source);
+          connectedCardIds.add(relation.source);
+          queue.push(relation.source);
+        }
+      }
+    }
+    
+    return Array.from(connectedCardIds);
+  };
+
   // 카드 정렬 및 필터링 함수
   const getSortedCards = () => {
     let filteredCards = [...cards];
@@ -543,6 +966,12 @@ function Home() {
         const hasDate = !!(card.startdate || card.enddate || card.es || card.ls);
         return dateFilter.type === 'has-date' ? hasDate : !hasDate;
       });
+    }
+
+    // 서브카드 전용 정렬 필터 적용
+    if (subcardsOnlyFilter.enabled && subcardsOnlyFilter.relationTypeName && subcardsOnlyFilter.targetCardTitle) {
+      const chainCardIds = findCardsInChainToTarget(subcardsOnlyFilter.targetCardTitle, subcardsOnlyFilter.relationTypeName);
+      filteredCards = filteredCards.filter(card => chainCardIds.includes(card.id));
     }
 
     // 금액 필터 적용
@@ -2790,6 +3219,85 @@ function Home() {
               )}
             </div>
 
+            {/* 서브카드 전용 정렬 필터 */}
+            <div style={{ marginBottom: 20 }}>
+              <h4 style={{ margin: '0 0 12px 0', color: '#ccc', fontSize: 16 }}>서브카드 전용 정렬</h4>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 8, color: '#fff', marginBottom: 8 }}>
+                <input
+                  type="checkbox"
+                  checked={subcardsOnlyFilter.enabled}
+                  onChange={(e) => setSubcardsOnlyFilter(prev => ({ ...prev, enabled: e.target.checked }))}
+                  style={{ transform: 'scale(1.2)' }}
+                />
+                <span>관계 체인 따라 필터링 활성화</span>
+              </label>
+              {subcardsOnlyFilter.enabled && (
+                <div style={{ marginLeft: 24, display: 'flex', flexDirection: 'column', gap: 12 }}>
+                  {/* 관계 타입 선택 */}
+                  <div>
+                    <label style={{ display: 'block', color: '#ccc', marginBottom: 4, fontSize: 14 }}>
+                      기준 관계 타입:
+                    </label>
+                    <select
+                      value={subcardsOnlyFilter.relationTypeName}
+                      onChange={(e) => setSubcardsOnlyFilter(prev => ({ ...prev, relationTypeName: e.target.value }))}
+                      style={{
+                        width: '100%',
+                        padding: '8px',
+                        background: '#333',
+                        border: '1px solid #555',
+                        borderRadius: 4,
+                        color: '#fff'
+                      }}
+                    >
+                      <option value="">관계 타입을 선택하세요</option>
+                      {relationTypes.map((relType) => (
+                        <option key={relType.relationtype_id} value={relType.typename}>
+                          {relType.typename}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  
+                  {/* 목표 카드 선택 */}
+                  <div>
+                    <label style={{ display: 'block', color: '#ccc', marginBottom: 4, fontSize: 14 }}>
+                      목표 카드 이름:
+                    </label>
+                    <input
+                      type="text"
+                      value={subcardsOnlyFilter.targetCardTitle}
+                      onChange={(e) => setSubcardsOnlyFilter(prev => ({ ...prev, targetCardTitle: e.target.value }))}
+                      placeholder="카드 제목을 입력하세요"
+                      style={{
+                        width: '100%',
+                        padding: '8px',
+                        background: '#333',
+                        border: '1px solid #555',
+                        borderRadius: 4,
+                        color: '#fff'
+                      }}
+                    />
+                  </div>
+                  
+                  {/* 설명 텍스트 */}
+                  <div style={{ 
+                    fontSize: 12, 
+                    color: '#888', 
+                    padding: '8px', 
+                    background: '#1a1a1a', 
+                    borderRadius: 4,
+                    border: '1px solid #333'
+                  }}>
+                    <strong>사용 예시:</strong><br/>
+                    관계 체인이 "A for B, B for C, C for D"이고<br/>
+                    관계 타입 = "for", 목표 카드 = "D"로 설정하면<br/>
+                    D로 이어지는 체인의 카드들(A, B, C)만 표시됩니다.
+                  </div>
+                </div>
+              )}
+            </div>
+
             {/* 적용/초기화 버튼 */}
             <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
               <button
@@ -2798,6 +3306,7 @@ function Home() {
                   setCardTypeFilters([]);
                   setRelationFilter({ enabled: false, type: 'no-relations' });
                   setDateFilter({ enabled: false, type: 'has-date' });
+                  setSubcardsOnlyFilter({ enabled: false, relationTypeName: '', targetCardTitle: '' });
                   setAmountFilter({ enabled: false, amount: '', operator: 'gte' });
                   setSortOptions({
                     relationCount: { enabled: false, relationTypes: [] },
@@ -7086,6 +7595,7 @@ export default function App() {
             { to: '/cardtypes', label: '카드타입' },
             { to: '/relationtypes', label: '관계타입' },
             { to: '/relations', label: '관계' },
+            { to: '/projects', label: '프로젝트' },
             { to: '/trash', label: '휴지통' },
             { to: '/analytics', label: '분석' },
             { to: '/settings', label: '설정' },
@@ -7111,6 +7621,7 @@ export default function App() {
             <Route path="/cardtypes" element={<CardTypeManage />} />
             <Route path="/relationtypes" element={<RelationTypeManage />} />
             <Route path="/relations" element={<RelationManage />} />
+            <Route path="/projects" element={<ProjectManage />} />
             <Route path="/trash" element={<TrashManage />} />
             <Route path="/analytics" element={<Analytics />} />
             <Route path="/settings" element={<Settings />} />
