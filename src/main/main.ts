@@ -344,14 +344,14 @@ ipcMain.handle('create-card', async (_, payload: { title: string; project_id?: s
     if (payload.project_id) {
       // 같은 프로젝트 내에서 중복 확인
       duplicateCheckQuery = `
-        SELECT id FROM CARDS 
+        SELECT id FROM CARDS
         WHERE title = ? AND project_id = ? AND deleted_at IS NULL
       `;
       duplicateCheckParams = [title, payload.project_id];
     } else {
       // 프로젝트가 없는 카드들 중에서 중복 확인
       duplicateCheckQuery = `
-        SELECT id FROM CARDS 
+        SELECT id FROM CARDS
         WHERE title = ? AND project_id IS NULL AND deleted_at IS NULL
       `;
       duplicateCheckParams = [title];
@@ -1619,17 +1619,17 @@ ipcMain.handle('get-habit', async (event, cardId: string) => {
 ipcMain.handle('get-habits', async () => {
   try {
     const habits = db.prepare(`
-      SELECT 
+      SELECT
         hp.*,
         c.title,
         c.content
       FROM habit_properties hp
       JOIN CARDS c ON hp.card_id = c.id
-      WHERE hp.deleted_at IS NULL 
+      WHERE hp.deleted_at IS NULL
       AND c.deleted_at IS NULL
       ORDER BY hp.created_at DESC
     `).all();
-    
+
     return { success: true, data: habits };
   } catch (error) {
     log.error('Failed to get habits:', error);
@@ -1649,32 +1649,32 @@ ipcMain.handle('update-habit', async (event, cardId: string, updates: Partial<Ha
     // 업데이트 쿼리 생성
     const updateFields: string[] = [];
     const values: any[] = [];
-    
+
     Object.entries(updates).forEach(([key, value]) => {
       if (value !== undefined) {
         updateFields.push(`${key} = ?`);
         values.push(value);
       }
     });
-    
+
     if (updateFields.length === 0) {
       return { success: true, data: oldHabit };
     }
-    
+
     values.push(cardId);
-    
+
     const updateStmt = db.prepare(`
-      UPDATE habit_properties 
-      SET ${updateFields.join(', ')} 
+      UPDATE habit_properties
+      SET ${updateFields.join(', ')}
       WHERE card_id = ?
     `);
-    
+
     updateStmt.run(...values);
-    
+
     // RRULE 관련 변경사항이 있다면 캐시 재전개
-    const rruleChanged = updates.rrule || updates.dtstartLocal || updates.tzid || 
+    const rruleChanged = updates.rrule || updates.dtstartLocal || updates.tzid ||
                         updates.rdatesJson || updates.exdatesJson;
-    
+
     if (rruleChanged) {
       const newHabit = db.prepare('SELECT * FROM habit_properties WHERE card_id = ?').get(cardId) as HabitProperties;
       await onRRuleUpdated(db, cardId, oldHabit, newHabit);
@@ -1691,13 +1691,13 @@ ipcMain.handle('update-habit', async (event, cardId: string, updates: Partial<Ha
 ipcMain.handle('delete-habit', async (event, cardId: string) => {
   try {
     const stmt = db.prepare(`
-      UPDATE habit_properties 
-      SET deleted_at = datetime('now') 
+      UPDATE habit_properties
+      SET deleted_at = datetime('now')
       WHERE card_id = ?
     `);
-    
+
     stmt.run(cardId);
-    
+
     return { success: true, data: { cardId } };
   } catch (error) {
     log.error('Failed to delete habit:', error);
@@ -1841,7 +1841,7 @@ ipcMain.handle('get-longest-streak', async (event, cardId: string) => {
 ipcMain.handle('get-habit-instances', async (event, cardId: string, startUtc: string, endUtc: string) => {
   try {
     const instances = db.prepare(`
-      SELECT 
+      SELECT
         hic.*,
         CASE WHEN hl.id IS NOT NULL THEN 1 ELSE 0 END as is_completed,
         hl.done_quantity,
@@ -1855,7 +1855,7 @@ ipcMain.handle('get-habit-instances', async (event, cardId: string, startUtc: st
       AND hic.is_exception = 0
       ORDER BY hic.start_utc
     `).all(cardId, startUtc, endUtc);
-    
+
     return { success: true, data: instances };
   } catch (error) {
     log.error('Failed to get habit instances:', error);
@@ -1866,13 +1866,13 @@ ipcMain.handle('get-habit-instances', async (event, cardId: string, startUtc: st
 // 습관 로그 조회
 ipcMain.handle('get-habit-logs', async (event, cardId: string, limit?: number) => {
   try {
-    const query = limit 
+    const query = limit
       ? `SELECT * FROM habit_logs WHERE card_id = ? ORDER BY updated_at DESC LIMIT ?`
       : `SELECT * FROM habit_logs WHERE card_id = ? ORDER BY updated_at DESC`;
-    
+
     const params = limit ? [cardId, limit] : [cardId];
     const logs = db.prepare(query).all(...params);
-    
+
     return { success: true, data: logs };
   } catch (error) {
     log.error('Failed to get habit logs:', error);
@@ -1888,7 +1888,7 @@ ipcMain.handle('get-habit-logs', async (event, cardId: string, limit?: number) =
 ipcMain.handle('get-projects', async () => {
   try {
     const projects = db.prepare(`
-      SELECT 
+      SELECT
         p.*,
         COUNT(c.id) as card_count
       FROM PROJECTS p
@@ -1896,7 +1896,7 @@ ipcMain.handle('get-projects', async () => {
       GROUP BY p.project_id, p.project_name, p.createdat
       ORDER BY p.createdat DESC
     `).all();
-    
+
     return { success: true, data: projects };
   } catch (error) {
     log.error('Failed to get projects:', error);
@@ -1924,9 +1924,9 @@ ipcMain.handle('create-project', async (event, projectName: string) => {
       INSERT INTO PROJECTS (project_id, project_name, createdat)
       VALUES (?, ?, datetime('now'))
     `);
-    
+
     stmt.run(projectId, projectName);
-    
+
     return { success: true, data: { project_id: projectId, project_name: projectName } };
   } catch (error) {
     log.error('Failed to create project:', error);
@@ -1952,23 +1952,23 @@ ipcMain.handle('update-project', async (event, projectId: string, projectName: s
     const existingProject = db.prepare(
       'SELECT project_id FROM PROJECTS WHERE project_name = ? AND project_id != ?'
     ).get(projectName, projectId);
-    
+
     if (existingProject) {
       return { success: false, error: 'Project name already exists' };
     }
 
     const stmt = db.prepare(`
-      UPDATE PROJECTS 
-      SET project_name = ? 
+      UPDATE PROJECTS
+      SET project_name = ?
       WHERE project_id = ?
     `);
-    
+
     const result = stmt.run(projectName, projectId);
-    
+
     if (result.changes === 0) {
       return { success: false, error: 'Project not found' };
     }
-    
+
     return { success: true, data: { project_id: projectId, project_name: projectName } };
   } catch (error) {
     log.error('Failed to update project:', error);
@@ -1993,19 +1993,19 @@ ipcMain.handle('delete-project', async (event, projectId: string) => {
     const transaction = db.transaction(() => {
       // 프로젝트에 속한 카드들의 project_id를 NULL로 설정
       db.prepare('UPDATE CARDS SET project_id = NULL WHERE project_id = ?').run(projectId);
-      
+
       // 프로젝트 삭제
       const result = db.prepare('DELETE FROM PROJECTS WHERE project_id = ?').run(projectId);
-      
+
       return result;
     });
-    
+
     const result = transaction();
-    
+
     if (result.changes === 0) {
       return { success: false, error: 'Project not found' };
     }
-    
+
     return { success: true, data: { project_id: projectId } };
   } catch (error) {
     log.error('Failed to delete project:', error);
@@ -2021,7 +2021,7 @@ ipcMain.handle('delete-project', async (event, projectId: string) => {
 ipcMain.handle('get-project-cards', async (event, projectId: string) => {
   try {
     const cards = db.prepare(`
-      SELECT 
+      SELECT
         c.*,
         ct.cardtype_name,
         COUNT(r.id) as relation_count
@@ -2032,7 +2032,7 @@ ipcMain.handle('get-project-cards', async (event, projectId: string) => {
       GROUP BY c.id
       ORDER BY c.createdat DESC
     `).all(projectId);
-    
+
     return { success: true, data: cards };
   } catch (error) {
     log.error('Failed to get project cards:', error);

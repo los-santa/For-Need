@@ -79,7 +79,7 @@ function ProjectManage() {
   // 프로젝트 생성
   const createProject = async () => {
     if (!projectName.trim()) return;
-    
+
     try {
       const result = await window.electron.ipcRenderer.invoke('create-project', projectName.trim());
       if (result.success) {
@@ -98,11 +98,11 @@ function ProjectManage() {
   // 프로젝트 수정
   const updateProject = async () => {
     if (!editingProject || !projectName.trim()) return;
-    
+
     try {
       const result = await window.electron.ipcRenderer.invoke(
-        'update-project', 
-        editingProject.project_id, 
+        'update-project',
+        editingProject.project_id,
         projectName.trim()
       );
       if (result.success) {
@@ -128,7 +128,7 @@ function ProjectManage() {
     if (!confirm(`정말로 "${project.project_name}" 프로젝트를 삭제하시겠습니까?\n프로젝트에 속한 카드들은 "프로젝트 없음" 상태가 됩니다.`)) {
       return;
     }
-    
+
     try {
       const result = await window.electron.ipcRenderer.invoke('delete-project', project.project_id);
       if (result.success) {
@@ -271,7 +271,7 @@ function ProjectManage() {
                         </div>
                         {card.content && (
                           <div style={{ fontSize: '0.9em', color: '#ccc', marginBottom: '8px' }}>
-                            {card.content.length > 100 
+                            {card.content.length > 100
                               ? `${card.content.substring(0, 100)}...`
                               : card.content
                             }
@@ -656,6 +656,11 @@ function Home() {
     targetCardTitle: '' // 목표 카드 제목
   });
 
+  // 서브카드 필터의 자동완성 관련 상태
+  const [subcardsDropdownVisible, setSubcardsDropdownVisible] = useState(false);
+  const [filteredSubcardsTargets, setFilteredSubcardsTargets] = useState<any[]>([]);
+  const [subcardsSelectedIndex, setSubcardsSelectedIndex] = useState(-1);
+
   // 카드 검색 상태
   const [cardSearchTerm, setCardSearchTerm] = useState('');
 
@@ -931,6 +936,61 @@ function Home() {
     return Array.from(connectedCardIds);
   };
 
+  // 서브카드 필터의 카드 자동완성 필터링
+  const filterSubcardsTargetCards = (searchTerm: string) => {
+    if (!searchTerm.trim()) {
+      setFilteredSubcardsTargets([]);
+      setSubcardsDropdownVisible(false);
+      return;
+    }
+
+    const term = searchTerm.toLowerCase().trim();
+    const filtered = cards
+      .filter(card => 
+        card.title.toLowerCase().includes(term) ||
+        (card.content && card.content.toLowerCase().includes(term))
+      )
+      .slice(0, 10); // 최대 10개만 표시
+    
+    setFilteredSubcardsTargets(filtered);
+    setSubcardsDropdownVisible(filtered.length > 0);
+    setSubcardsSelectedIndex(-1);
+  };
+
+  // 서브카드 필터 키보드 핸들링
+  const handleSubcardsKeyDown = (e: React.KeyboardEvent) => {
+    if (!subcardsDropdownVisible || filteredSubcardsTargets.length === 0) return;
+
+    switch (e.key) {
+      case 'ArrowDown':
+        e.preventDefault();
+        setSubcardsSelectedIndex(prev => 
+          prev < filteredSubcardsTargets.length - 1 ? prev + 1 : 0
+        );
+        break;
+      case 'ArrowUp':
+        e.preventDefault();
+        setSubcardsSelectedIndex(prev => 
+          prev > 0 ? prev - 1 : filteredSubcardsTargets.length - 1
+        );
+        break;
+      case 'Enter':
+        e.preventDefault();
+        if (subcardsSelectedIndex >= 0 && subcardsSelectedIndex < filteredSubcardsTargets.length) {
+          const selectedCard = filteredSubcardsTargets[subcardsSelectedIndex];
+          setSubcardsOnlyFilter(prev => ({ ...prev, targetCardTitle: selectedCard.title }));
+          setSubcardsDropdownVisible(false);
+          setSubcardsSelectedIndex(-1);
+        }
+        break;
+      case 'Escape':
+        e.preventDefault();
+        setSubcardsDropdownVisible(false);
+        setSubcardsSelectedIndex(-1);
+        break;
+    }
+  };
+
   // 카드 정렬 및 필터링 함수
   const getSortedCards = () => {
     let filteredCards = [...cards];
@@ -1104,7 +1164,7 @@ function Home() {
         loadCardAliases(matchedCard.id);
       }
     }
-  }, [sourceCardInput, cards, currentCardId]);
+  }, [sourceCardInput]); // 무한 루프 방지를 위해 cards, currentCardId 의존성 제거
 
   useEffect(() => {
     if (currentCardId) {
@@ -2902,6 +2962,12 @@ function Home() {
             zIndex: 2000,
           }}
           onClick={() => setShowFilterModal(false)}
+          onKeyDown={(e) => {
+            if (e.key === 'Escape') {
+              setShowFilterModal(false);
+            }
+          }}
+          tabIndex={-1}
         >
           <div
             style={{
@@ -3258,34 +3324,94 @@ function Home() {
                       ))}
                     </select>
                   </div>
-                  
+
                   {/* 목표 카드 선택 */}
-                  <div>
+                  <div style={{ position: 'relative' }}>
                     <label style={{ display: 'block', color: '#ccc', marginBottom: 4, fontSize: 14 }}>
                       목표 카드 이름:
                     </label>
                     <input
                       type="text"
                       value={subcardsOnlyFilter.targetCardTitle}
-                      onChange={(e) => setSubcardsOnlyFilter(prev => ({ ...prev, targetCardTitle: e.target.value }))}
+                      onChange={(e) => {
+                        const value = e.target.value;
+                        setSubcardsOnlyFilter(prev => ({ ...prev, targetCardTitle: value }));
+                        filterSubcardsTargetCards(value);
+                      }}
+                      onKeyDown={handleSubcardsKeyDown}
+                      onFocus={() => {
+                        if (subcardsOnlyFilter.targetCardTitle.trim()) {
+                          filterSubcardsTargetCards(subcardsOnlyFilter.targetCardTitle);
+                        }
+                      }}
+                      onBlur={() => {
+                        // 약간의 지연을 두어 드롭다운 클릭 이벤트가 처리되도록 함
+                        setTimeout(() => setSubcardsDropdownVisible(false), 200);
+                      }}
                       placeholder="카드 제목을 입력하세요"
                       style={{
                         width: '100%',
                         padding: '8px',
                         background: '#333',
-                        border: '1px solid #555',
-                        borderRadius: 4,
-                        color: '#fff'
+                        border: `1px solid ${subcardsDropdownVisible ? '#4CAF50' : '#555'}`,
+                        borderRadius: subcardsDropdownVisible ? '4px 4px 0 0' : 4,
+                        color: '#fff',
+                        outline: 'none'
                       }}
                     />
+                    
+                    {/* 자동완성 드롭다운 */}
+                    {subcardsDropdownVisible && filteredSubcardsTargets.length > 0 && (
+                      <div style={{
+                        position: 'absolute',
+                        top: '100%',
+                        left: 0,
+                        right: 0,
+                        background: '#333',
+                        border: '1px solid #4CAF50',
+                        borderTop: 'none',
+                        borderRadius: '0 0 4px 4px',
+                        maxHeight: '200px',
+                        overflowY: 'auto',
+                        zIndex: 3000
+                      }}>
+                        {filteredSubcardsTargets.map((card, index) => (
+                          <div
+                            key={card.id}
+                            style={{
+                              padding: '8px 12px',
+                              cursor: 'pointer',
+                              backgroundColor: index === subcardsSelectedIndex ? '#4CAF50' : 'transparent',
+                              color: index === subcardsSelectedIndex ? '#fff' : '#ccc',
+                              borderBottom: index < filteredSubcardsTargets.length - 1 ? '1px solid #555' : 'none'
+                            }}
+                            onClick={() => {
+                              setSubcardsOnlyFilter(prev => ({ ...prev, targetCardTitle: card.title }));
+                              setSubcardsDropdownVisible(false);
+                              setSubcardsSelectedIndex(-1);
+                            }}
+                          >
+                            <div style={{ fontWeight: 'bold' }}>{card.title}</div>
+                            {card.content && (
+                              <div style={{ fontSize: '0.8em', color: '#888', marginTop: '2px' }}>
+                                {card.content.length > 50 
+                                  ? `${card.content.substring(0, 50)}...`
+                                  : card.content
+                                }
+                              </div>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
-                  
+
                   {/* 설명 텍스트 */}
-                  <div style={{ 
-                    fontSize: 12, 
-                    color: '#888', 
-                    padding: '8px', 
-                    background: '#1a1a1a', 
+                  <div style={{
+                    fontSize: 12,
+                    color: '#888',
+                    padding: '8px',
+                    background: '#1a1a1a',
                     borderRadius: 4,
                     border: '1px solid #333'
                   }}>
@@ -3307,6 +3433,8 @@ function Home() {
                   setRelationFilter({ enabled: false, type: 'no-relations' });
                   setDateFilter({ enabled: false, type: 'has-date' });
                   setSubcardsOnlyFilter({ enabled: false, relationTypeName: '', targetCardTitle: '' });
+                  setSubcardsDropdownVisible(false);
+                  setSubcardsSelectedIndex(-1);
                   setAmountFilter({ enabled: false, amount: '', operator: 'gte' });
                   setSortOptions({
                     relationCount: { enabled: false, relationTypes: [] },
