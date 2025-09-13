@@ -245,39 +245,7 @@ interface Project {
   createdat: string;
 }
 
-// 프로젝트 관련 IPC 핸들러
-ipcMain.handle('get-projects', async () => {
-  try {
-    const projects = db.prepare('SELECT * FROM PROJECTS').all() as Project[];
-    return { success: true, data: projects };
-  } catch (error) {
-    log.error('Failed to get projects:', error);
-    return { success: false, error: 'Failed to get projects' };
-  }
-});
-
-ipcMain.handle('create-project', async (_, project: Omit<Project, 'createdat'>) => {
-  try {
-    const now = new Date().toISOString();
-    db.prepare(
-      'INSERT INTO PROJECTS (project_id, project_name, createdat) VALUES (?, ?, ?)',
-    ).run(project.project_id, project.project_name, now);
-    return { success: true };
-  } catch (error) {
-    log.error('Failed to create project:', error);
-    return { success: false, error: 'Failed to create project' };
-  }
-});
-
-ipcMain.handle('delete-project', async (_, projectId: string) => {
-  try {
-    db.prepare('DELETE FROM PROJECTS WHERE project_id = ?').run(projectId);
-    return { success: true };
-  } catch (error) {
-    log.error('Failed to delete project:', error);
-    return { success: false, error: 'Failed to delete project' };
-  }
-});
+// 기존 프로젝트 핸들러들은 아래 완전한 버전으로 대체됨
 
 // --------------------------------------------------------------
 // Relation 핸들러
