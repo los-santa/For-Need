@@ -669,8 +669,8 @@ function Home() {
 
   // 완료상태 필터
   const [completionFilter, setCompletionFilter] = useState({
-    enabled: savedFilters?.completionFilter?.enabled || false,
-    type: savedFilters?.completionFilter?.type || 'completed-only' // 'completed-only' (완료된 것만), 'incomplete-only' (미완료된 것만)
+    enabled: (savedFilters && savedFilters.completionFilter && savedFilters.completionFilter.enabled) || false,
+    type: (savedFilters && savedFilters.completionFilter && savedFilters.completionFilter.type) || 'completed-only' // 'completed-only' (완료된 것만), 'incomplete-only' (미완료된 것만)
   });
 
   // 서브카드 필터의 자동완성 관련 상태
@@ -1090,7 +1090,7 @@ function Home() {
     }
 
     // 완료상태 필터 적용
-    if (completionFilter.enabled) {
+    if (completionFilter && completionFilter.enabled) {
       filteredCards = filteredCards.filter(card => {
         const isCompleted = Boolean((card as any).complete);
         // 디버깅용 로그 (임시)
@@ -3323,19 +3323,19 @@ function Home() {
               <label style={{ display: 'flex', alignItems: 'center', gap: 8, color: '#fff', marginBottom: 8 }}>
                 <input
                   type="checkbox"
-                  checked={completionFilter.enabled}
+                  checked={completionFilter?.enabled || false}
                   onChange={(e) => setCompletionFilter(prev => ({ ...prev, enabled: e.target.checked }))}
                   style={{ transform: 'scale(1.2)' }}
                 />
                 <span>완료상태 필터링 활성화</span>
               </label>
-              {completionFilter.enabled && (
+              {completionFilter?.enabled && (
                 <div style={{ marginLeft: 24 }}>
                   <label style={{ display: 'flex', alignItems: 'center', gap: 8, color: '#ccc', marginBottom: 4 }}>
                     <input
                       type="radio"
                       name="completionFilter"
-                      checked={completionFilter.type === 'completed-only'}
+                      checked={completionFilter?.type === 'completed-only'}
                       onChange={() => setCompletionFilter(prev => ({ ...prev, type: 'completed-only' }))}
                     />
                     <span>완료된 카드만 조회</span>
@@ -3344,7 +3344,7 @@ function Home() {
                     <input
                       type="radio"
                       name="completionFilter"
-                      checked={completionFilter.type === 'incomplete-only'}
+                      checked={completionFilter?.type === 'incomplete-only'}
                       onChange={() => setCompletionFilter(prev => ({ ...prev, type: 'incomplete-only' }))}
                     />
                     <span>미완료된 카드만 조회</span>
