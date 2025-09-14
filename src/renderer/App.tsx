@@ -1092,7 +1092,11 @@ function Home() {
     // 완료상태 필터 적용
     if (completionFilter.enabled) {
       filteredCards = filteredCards.filter(card => {
-        const isCompleted = (card as any).complete || false;
+        const isCompleted = Boolean((card as any).complete);
+        // 디버깅용 로그 (임시)
+        if (card.title && card.title.includes('카드 지울지 말지 의문 띄우는거')) {
+          console.log(`카드 "${card.title}" - complete 값:`, (card as any).complete, 'isCompleted:', isCompleted, 'filter type:', completionFilter.type);
+        }
         return completionFilter.type === 'completed-only' ? isCompleted : !isCompleted;
       });
     }
