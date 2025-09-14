@@ -647,10 +647,6 @@ function Home() {
     amount: {
       enabled: savedFilters?.sortOptions?.amount?.enabled || false,
       order: savedFilters?.sortOptions?.amount?.order || 'desc'
-    },
-    completion: {
-      enabled: savedFilters?.sortOptions?.completion?.enabled || false,
-      order: savedFilters?.sortOptions?.completion?.order || 'incomplete-first'
     }
   });
 
@@ -669,6 +665,12 @@ function Home() {
     enabled: savedFilters?.subcardsOnlyFilter?.enabled || false,
     relationTypeName: savedFilters?.subcardsOnlyFilter?.relationTypeName || '',
     targetCardTitle: savedFilters?.subcardsOnlyFilter?.targetCardTitle || ''
+  });
+
+  // 완료상태 필터
+  const [completionFilter, setCompletionFilter] = useState({
+    enabled: savedFilters?.completionFilter?.enabled || false,
+    type: savedFilters?.completionFilter?.type || 'completed-only' // 'completed-only' (완료된 것만), 'incomplete-only' (미완료된 것만)
   });
 
   // 서브카드 필터의 자동완성 관련 상태
@@ -1087,6 +1089,14 @@ function Home() {
       });
     }
 
+    // 완료상태 필터 적용
+    if (completionFilter.enabled) {
+      filteredCards = filteredCards.filter(card => {
+        const isCompleted = (card as any).complete || false;
+        return completionFilter.type === 'completed-only' ? isCompleted : !isCompleted;
+      });
+    }
+
     // 서브카드 전용 정렬 필터 적용
     if (subcardsOnlyFilter.enabled && subcardsOnlyFilter.relationTypeName && subcardsOnlyFilter.targetCardTitle) {
       const chainCardIds = findCardsInChainToTarget(subcardsOnlyFilter.targetCardTitle, subcardsOnlyFilter.relationTypeName);
@@ -1137,21 +1147,6 @@ function Home() {
           return amountB - amountA;
         } else {
           return amountA - amountB;
-        }
-      });
-    }
-    // 완료/미완료 정렬이 활성화된 경우
-    else if (sortOptions.completion.enabled) {
-      sortedCards.sort((a, b) => {
-        const completeA = (a as any).complete || false;
-        const completeB = (b as any).complete || false;
-
-        if (sortOptions.completion.order === 'incomplete-first') {
-          if (completeA === completeB) return 0;
-          return completeA ? 1 : -1; // 미완료가 위로
-        } else {
-          if (completeA === completeB) return 0;
-          return completeA ? -1 : 1; // 완료가 위로
         }
       });
     }
@@ -1261,13 +1256,14 @@ function Home() {
         dateFilter,
         subcardsOnlyFilter,
         amountFilter,
-        cardTypeFilters
+        cardTypeFilters,
+        completionFilter
       };
       localStorage.setItem('forneed-filter-settings', JSON.stringify(filterSettings));
     } catch (error) {
       console.warn('필터 설정 저장 실패:', error);
     }
-  }, [sortOptions, relationFilter, dateFilter, subcardsOnlyFilter, amountFilter, cardTypeFilters]);
+  }, [sortOptions, relationFilter, dateFilter, subcardsOnlyFilter, amountFilter, cardTypeFilters, completionFilter]);
 
   // Esc 키로 충돌 모달 닫기
   useEffect(() => {
@@ -3317,7 +3313,43 @@ function Home() {
               )}
             </div>
 
-            {/* 5. 금액 필터 */}
+            {/* 5. 완료상태 필터 */}
+            <div style={{ marginBottom: 20 }}>
+              <h4 style={{ margin: '0 0 12px 0', color: '#ccc', fontSize: 16 }}>완료상태 필터</h4>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 8, color: '#fff', marginBottom: 8 }}>
+                <input
+                  type="checkbox"
+                  checked={completionFilter.enabled}
+                  onChange={(e) => setCompletionFilter(prev => ({ ...prev, enabled: e.target.checked }))}
+                  style={{ transform: 'scale(1.2)' }}
+                />
+                <span>완료상태 필터링 활성화</span>
+              </label>
+              {completionFilter.enabled && (
+                <div style={{ marginLeft: 24 }}>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 8, color: '#ccc', marginBottom: 4 }}>
+                    <input
+                      type="radio"
+                      name="completionFilter"
+                      checked={completionFilter.type === 'completed-only'}
+                      onChange={() => setCompletionFilter(prev => ({ ...prev, type: 'completed-only' }))}
+                    />
+                    <span>완료된 카드만 조회</span>
+                  </label>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 8, color: '#ccc' }}>
+                    <input
+                      type="radio"
+                      name="completionFilter"
+                      checked={completionFilter.type === 'incomplete-only'}
+                      onChange={() => setCompletionFilter(prev => ({ ...prev, type: 'incomplete-only' }))}
+                    />
+                    <span>미완료된 카드만 조회</span>
+                  </label>
+                </div>
+              )}
+            </div>
+
+            {/* 6. 금액 필터 */}
             <div style={{ marginBottom: 24 }}>
               <h4 style={{ margin: '0 0 12px 0', color: '#ccc', fontSize: 16 }}>금액 필터</h4>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
@@ -3364,7 +3396,7 @@ function Home() {
               </div>
             </div>
 
-            {/* 6. 정렬 옵션 */}
+            {/* 7. 정렬 옵션 */}
             <div style={{ marginBottom: 24 }}>
               <h4 style={{ margin: '0 0 12px 0', color: '#ccc', fontSize: 16 }}>정렬 옵션</h4>
 
@@ -3474,41 +3506,6 @@ function Home() {
                 )}
               </div>
 
-              {/* 완료/미완료 정렬 */}
-              <div>
-                <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', marginBottom: 8 }}>
-                  <input
-                    type="checkbox"
-                    checked={sortOptions.completion.enabled}
-                    onChange={(e) => setSortOptions(prev => ({
-                      ...prev,
-                      completion: { ...prev.completion, enabled: e.target.checked }
-                    }))}
-                  />
-                  <span>완료/미완료 정렬</span>
-                </label>
-                {sortOptions.completion.enabled && (
-                  <div style={{ marginLeft: 24 }}>
-                    <select
-                      value={sortOptions.completion.order}
-                      onChange={(e) => setSortOptions(prev => ({
-                        ...prev,
-                        completion: { ...prev.completion, order: e.target.value as 'incomplete-first' | 'complete-first' }
-                      }))}
-                      style={{
-                        padding: '6px 8px',
-                        background: '#333',
-                        border: '1px solid #555',
-                        borderRadius: 4,
-                        color: '#fff'
-                      }}
-                    >
-                      <option value="incomplete-first">미완료 먼저</option>
-                      <option value="complete-first">완료 먼저</option>
-                    </select>
-                  </div>
-                )}
-              </div>
             </div>
 
             {/* 적용/초기화 버튼 */}
@@ -3519,14 +3516,14 @@ function Home() {
                   setCardTypeFilters([]);
                   setRelationFilter({ enabled: false, type: 'no-relations' });
                   setDateFilter({ enabled: false, type: 'has-date' });
+                  setCompletionFilter({ enabled: false, type: 'completed-only' });
                   setSubcardsOnlyFilter({ enabled: false, relationTypeName: '', targetCardTitle: '' });
                   setSubcardsDropdownVisible(false);
                   setSubcardsSelectedIndex(-1);
                   setAmountFilter({ enabled: false, amount: '', operator: 'gte' });
                   setSortOptions({
                     relationCount: { enabled: false, relationTypes: [], order: 'desc' },
-                    amount: { enabled: false, order: 'desc' },
-                    completion: { enabled: false, order: 'incomplete-first' }
+                    amount: { enabled: false, order: 'desc' }
                   });
                 }}
                 style={{
