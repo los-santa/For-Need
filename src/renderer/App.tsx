@@ -616,44 +616,59 @@ function Home() {
   // 왼쪽 패널 접기 상태
   const [isLeftCollapsed, setIsLeftCollapsed] = useState(false);
 
+  // localStorage에서 필터 설정 복원
+  const loadFilterSettings = () => {
+    try {
+      const saved = localStorage.getItem('forneed-filter-settings');
+      return saved ? JSON.parse(saved) : null;
+    } catch (error) {
+      console.warn('필터 설정 로드 실패:', error);
+      return null;
+    }
+  };
+
+  const savedFilters = loadFilterSettings();
+
   // 필터링 관련 상태
   const [showFilterModal, setShowFilterModal] = useState(false);
-  const [cardTypeFilters, setCardTypeFilters] = useState<string[]>([]);
+  const [cardTypeFilters, setCardTypeFilters] = useState<string[]>(savedFilters?.cardTypeFilters || []);
   const [amountFilter, setAmountFilter] = useState({
-    enabled: false,
-    amount: '',
-    operator: 'gte' // 'gte' (이상), 'lte' (이하)
+    enabled: savedFilters?.amountFilter?.enabled || false,
+    amount: savedFilters?.amountFilter?.amount || '',
+    operator: savedFilters?.amountFilter?.operator || 'gte'
   });
+
   const [sortOptions, setSortOptions] = useState({
     relationCount: {
-      enabled: false,
-      relationTypes: [] as string[]
+      enabled: savedFilters?.sortOptions?.relationCount?.enabled || false,
+      relationTypes: savedFilters?.sortOptions?.relationCount?.relationTypes || [],
+      order: savedFilters?.sortOptions?.relationCount?.order || 'desc'
     },
     amount: {
-      enabled: false,
-      order: 'desc' // 'desc' (내림차순), 'asc' (오름차순)
+      enabled: savedFilters?.sortOptions?.amount?.enabled || false,
+      order: savedFilters?.sortOptions?.amount?.order || 'desc'
     },
     completion: {
-      enabled: false,
-      order: 'incomplete-first' // 'incomplete-first' (미완료 먼저), 'complete-first' (완료 먼저)
+      enabled: savedFilters?.sortOptions?.completion?.enabled || false,
+      order: savedFilters?.sortOptions?.completion?.order || 'incomplete-first'
     }
   });
 
   // 새로운 필터 상태
   const [relationFilter, setRelationFilter] = useState({
-    enabled: false,
-    type: 'no-relations' // 'no-relations' (관계 없는 것), 'has-relations' (관계 있는 것)
+    enabled: savedFilters?.relationFilter?.enabled || false,
+    type: savedFilters?.relationFilter?.type || 'no-relations'
   });
   const [dateFilter, setDateFilter] = useState({
-    enabled: false,
-    type: 'has-date' // 'has-date' (날짜 지정됨), 'no-date' (날짜 미지정)
+    enabled: savedFilters?.dateFilter?.enabled || false,
+    type: savedFilters?.dateFilter?.type || 'has-date'
   });
 
   // 서브카드 전용 정렬 필터 상태
   const [subcardsOnlyFilter, setSubcardsOnlyFilter] = useState({
-    enabled: false,
-    relationTypeName: '', // 선택된 관계 타입 이름
-    targetCardTitle: '' // 목표 카드 제목
+    enabled: savedFilters?.subcardsOnlyFilter?.enabled || false,
+    relationTypeName: savedFilters?.subcardsOnlyFilter?.relationTypeName || '',
+    targetCardTitle: savedFilters?.subcardsOnlyFilter?.targetCardTitle || ''
   });
 
   // 서브카드 필터의 자동완성 관련 상태
@@ -680,7 +695,12 @@ function Home() {
   const [filteredTargetCards, setFilteredTargetCards] = useState<any[]>([]);
 
   const loadCards = async () => {
+    console.log('🃚 [loadCards] 시작');
+
     const res = (await window.electron.ipcRenderer.invoke('get-cards')) as any;
+
+    console.log('🃚 [loadCards] IPC 응답:', { success: res.success, cardsCount: res.data?.length });
+
     if (res.success) {
       setCards(res.data as { id: string; title: string; cardtype?: string | null }[]);
       if (!currentCardId && res.data.length) {
@@ -690,18 +710,53 @@ function Home() {
   };
 
   const loadRelations = async (cardId: string) => {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const res = (await window.electron.ipcRenderer.invoke('get-relations-by-source', cardId)) as any;
-    if (res.success) {
-      setRelations(res.data);
-    }
+    console.log('🔄 [loadRelations] 시작:', { cardId });
+
+    // 현재관계창은 해당 카드가 source인 관계만 표시
+    const cardRelations = allRelations.filter(rel => rel.source === cardId);
+
+    console.log('🔄 [loadRelations] 결과:', {
+      totalRelations: allRelations.length,
+      filteredRelations: cardRelations.length,
+      relations: cardRelations.map(r => ({
+        id: r.relation_id,
+        source: r.source,
+        target: r.target,
+        type: r.typename,
+        source_title: r.source_title,
+        target_title: r.target_title
+      }))
+    });
+
+    setRelations(cardRelations);
   };
 
   // 모든 관계 로드
   const loadAllRelations = async () => {
+    console.log('🔄 [loadAllRelations] 시작');
+
     const res = (await window.electron.ipcRenderer.invoke('get-relations')) as any;
+
+    console.log('🔄 [loadAllRelations] IPC 응답:', { success: res.success, dataLength: res.data?.length });
+
     if (res.success) {
       setAllRelations(res.data);
+
+      console.log('🔄 [loadAllRelations] 모든 관계:', res.data.map((r: any) => ({
+        id: r.relation_id,
+        source: r.source,
+        target: r.target,
+        type: r.typename,
+        source_title: r.source_title,
+        target_title: r.target_title
+      })));
+
+      // 현재 카드의 관계도 다시 로드 (source인 관계만)
+      if (currentCardId) {
+        const cardRelations = res.data.filter((rel: any) => rel.source === currentCardId);
+        console.log('🔄 [loadAllRelations] 현재 카드 관계:', { currentCardId, relations: cardRelations });
+        setRelations(cardRelations);
+      }
     }
   };
 
@@ -783,12 +838,16 @@ function Home() {
   };
 
   const selectSourceCard = (card: any) => {
+    console.log('🎥 [selectSourceCard] 시작:', card);
+
     setSourceCardInput(card.title);
     setSourceDropdownVisible(false);
     setSourceSelectedIndex(-1);
     // Source card 선택 시 currentCardId 업데이트
     setCurrentCardId(card.id);
     setCardTitleInput(card.title);
+
+    console.log('🔄 [selectSourceCard] 데이터 로드 시작:', { cardId: card.id, cardTitle: card.title });
 
     // 같은 카드를 다시 선택했을 때도 데이터 새로고침
     loadRelations(card.id);
@@ -888,15 +947,15 @@ function Home() {
     }
   };
 
-  // 카드별 관계 수 계산
+  // 카드별 관계 수 계산 (현재관계창과 동일: source인 관계만)
   const getRelationCount = (cardId: string) => {
-    return allRelations.filter(rel => rel.source === cardId || rel.target === cardId).length;
+    return allRelations.filter(rel => rel.source === cardId).length;
   };
 
-  // 특정 관계타입의 관계 수 계산
+  // 특정 관계타입의 관계 수 계산 (현재관계창과 동일: source인 관계만)
   const getRelationCountByType = (cardId: string, relationTypeName: string) => {
     return allRelations.filter(rel =>
-      (rel.source === cardId || rel.target === cardId) &&
+      rel.source === cardId &&
       rel.typename === relationTypeName
     ).length;
   };
@@ -910,20 +969,20 @@ function Home() {
     if (!targetCard) return [];
 
     const connectedCardIds = new Set<string>();
-    
+
     // BFS를 사용해 역방향으로 체인을 따라가기
     const queue = [targetCard.id];
     const visited = new Set<string>([targetCard.id]);
-    
+
     while (queue.length > 0) {
       const currentCardId = queue.shift()!;
-      
+
       // 현재 카드로 향하는 지정된 관계타입의 모든 관계들 찾기
-      const incomingRelations = allRelations.filter(rel => 
-        rel.target === currentCardId && 
+      const incomingRelations = allRelations.filter(rel =>
+        rel.target === currentCardId &&
         rel.typename === relationTypeName
       );
-      
+
       for (const relation of incomingRelations) {
         if (!visited.has(relation.source)) {
           visited.add(relation.source);
@@ -932,7 +991,7 @@ function Home() {
         }
       }
     }
-    
+
     return Array.from(connectedCardIds);
   };
 
@@ -946,12 +1005,12 @@ function Home() {
 
     const term = searchTerm.toLowerCase().trim();
     const filtered = cards
-      .filter(card => 
+      .filter(card =>
         card.title.toLowerCase().includes(term) ||
         (card.content && card.content.toLowerCase().includes(term))
       )
       .slice(0, 10); // 최대 10개만 표시
-    
+
     setFilteredSubcardsTargets(filtered);
     setSubcardsDropdownVisible(filtered.length > 0);
     setSubcardsSelectedIndex(-1);
@@ -964,13 +1023,13 @@ function Home() {
     switch (e.key) {
       case 'ArrowDown':
         e.preventDefault();
-        setSubcardsSelectedIndex(prev => 
+        setSubcardsSelectedIndex(prev =>
           prev < filteredSubcardsTargets.length - 1 ? prev + 1 : 0
         );
         break;
       case 'ArrowUp':
         e.preventDefault();
-        setSubcardsSelectedIndex(prev => 
+        setSubcardsSelectedIndex(prev =>
           prev > 0 ? prev - 1 : filteredSubcardsTargets.length - 1
         );
         break;
@@ -1061,7 +1120,11 @@ function Home() {
           countB += getRelationCountByType(b.id, typeName);
         });
 
-        return countB - countA; // 내림차순
+        if (sortOptions.relationCount.order === 'desc') {
+          return countB - countA; // 내림차순 (많은 것부터)
+        } else {
+          return countA - countB; // 오름차순 (적은 것부터)
+        }
       });
     }
     // 금액순 정렬이 활성화된 경우
@@ -1188,6 +1251,23 @@ function Home() {
       console.warn('localStorage 저장 실패:', error);
     }
   }, [sortByRelationType]);
+
+  // 필터 설정 변경 시 localStorage에 저장
+  useEffect(() => {
+    try {
+      const filterSettings = {
+        sortOptions,
+        relationFilter,
+        dateFilter,
+        subcardsOnlyFilter,
+        amountFilter,
+        cardTypeFilters
+      };
+      localStorage.setItem('forneed-filter-settings', JSON.stringify(filterSettings));
+    } catch (error) {
+      console.warn('필터 설정 저장 실패:', error);
+    }
+  }, [sortOptions, relationFilter, dateFilter, subcardsOnlyFilter, amountFilter, cardTypeFilters]);
 
   // Esc 키로 충돌 모달 닫기
   useEffect(() => {
@@ -1318,11 +1398,16 @@ function Home() {
   // 관계 생성 처리 함수
   // ------------------------------------------------------------
   const handleCreateRelation = async () => {
+    console.log('🔧 [handleCreateRelation] 시작');
+
     // ------------------------------------------------
     // source card 확보 (새로운 자동완성 입력 기준)
     // ------------------------------------------------
     const sourceTitle = sourceCardInput.trim() || cardTitleInput.trim();
+    console.log('🔧 [handleCreateRelation] sourceTitle:', sourceTitle);
+
     if (!sourceTitle) {
+      console.log('⚠️ [handleCreateRelation] sourceTitle 누락');
       showToast('먼저 소스 카드를 입력하세요');
       return;
     }
@@ -1383,21 +1468,49 @@ function Home() {
     }
 
     if (relationTypeId && targetId) {
+      console.log('🔧 [handleCreateRelation] 관계 생성 시작:', {
+        sourceId,
+        targetId,
+        relationTypeId,
+        sourceTitle: sourceTitle,
+        targetTitle: targetCardInput
+      });
+
+      // Source와 Target이 같은 경우 방지
+      if (sourceId === targetId) {
+        console.log('⚠️ [handleCreateRelation] 자기 자신과의 관계 방지');
+        showToast('자기 자신과의 관계는 만들 수 없습니다');
+        return;
+      }
+
       const res = (await window.electron.ipcRenderer.invoke('create-relation', {
         relationtype_id: relationTypeId,
         source: sourceId,
         target: targetId,
       })) as any;
+
+      console.log('🔧 [handleCreateRelation] IPC 응답:', res);
+
       if (res.success) {
+        console.log('✅ [handleCreateRelation] 관계 생성 성공');
+
         // relationTypeInput 유지
         setTargetCardInput('');
         setTargetDropdownVisible(false);
         setTargetSelectedIndex(-1);
         setOppModal({ show: false, typeName: '' });
+
+        console.log('🔄 [handleCreateRelation] 관계 데이터 새로고침 시작');
         await loadRelations(sourceId);
         await loadAllRelations(); // 모든 관계 목록도 새로고침
+
         showToast('관계 생성 완료');
+      } else {
+        console.error('❌ [handleCreateRelation] 관계 생성 실패:', res);
+        showToast('관계 생성에 실패했습니다');
       }
+    } else {
+      console.log('⚠️ [handleCreateRelation] 필수 데이터 누락:', { relationTypeId, targetId });
     }
   };
 
@@ -1613,99 +1726,6 @@ function Home() {
     return template;
   };
 
-    // 관계 목록 키보드 이벤트 핸들러
-  const handleRelationKeyDown = (e: React.KeyboardEvent) => {
-    // 입력 필드에서 오는 이벤트나 관계 추가 모드일 때는 무시
-    if ((e.target as HTMLElement).tagName === 'INPUT' || isAddingRelation) {
-      return;
-    }
-
-    const sortedRelations = relations.sort((a, b) => a.relationtype_id - b.relationtype_id);
-
-    if (e.key === 'Enter') {
-      if (e.metaKey || e.ctrlKey) {
-        // Cmd+Enter: 해당 카드로 이동
-        e.preventDefault();
-        if (selectedRelationIndex >= 0 && selectedRelationIndex < sortedRelations.length) {
-          const selectedRelation = sortedRelations[selectedRelationIndex];
-          const targetTitle = selectedRelation.target_title || selectedRelation.target;
-          setCardTitleInput(targetTitle);
-          setCurrentCardId(selectedRelation.target);
-          setSelectedRelationIndex(-1);
-          setIsRelationListFocused(false);
-        }
-      } else {
-        // Enter: 다음 관계로 이동하거나 새로운 관계 추가 모드 진입
-        e.preventDefault();
-        if (isAddingRelation) {
-          // 새로운 관계 저장
-          saveNewRelation();
-        } else if (selectedRelationIndex >= 0 && selectedRelationIndex < sortedRelations.length) {
-          // 다음 관계로 이동
-          if (selectedRelationIndex === sortedRelations.length - 1) {
-            // 마지막 관계에서 Enter 누르면 새로운 관계 추가 모드
-            setIsAddingRelation(true);
-            setSelectedRelationIndex(-1);
-            setNewRelationType(relationTypes[0]?.typename || '');
-            setNewTargetCard('');
-          } else {
-            setSelectedRelationIndex(prev => prev + 1);
-          }
-        } else if (relations.length === 0 || selectedRelationIndex === -1) {
-          // 관계가 없거나 선택된 것이 없으면 새로운 관계 추가 모드
-          setIsAddingRelation(true);
-          setNewRelationType(relationTypes[0]?.typename || '');
-          setNewTargetCard('');
-        }
-      }
-    } else if (e.key === 'ArrowDown') {
-      e.preventDefault();
-      setSelectedRelationIndex(prev =>
-        prev < sortedRelations.length - 1 ? prev + 1 : 0
-      );
-    } else if (e.key === 'ArrowUp') {
-      e.preventDefault();
-      setSelectedRelationIndex(prev =>
-        prev > 0 ? prev - 1 : sortedRelations.length - 1
-      );
-        } else if (e.key === 'Tab') {
-      // Tab: 관계타입 순환 변경
-      e.preventDefault();
-      if (isAddingRelation) {
-        // 새로운 관계 추가 모드에서 관계타입 변경
-        const currentTypeIndex = relationTypes.findIndex(rt => rt.typename === newRelationType);
-        const nextTypeIndex = (currentTypeIndex + 1) % relationTypes.length;
-        setNewRelationType(relationTypes[nextTypeIndex]?.typename || '');
-      } else if (selectedRelationIndex >= 0 && selectedRelationIndex < sortedRelations.length) {
-        const selectedRelation = sortedRelations[selectedRelationIndex];
-        const currentTypeIndex = relationTypes.findIndex(rt => rt.relationtype_id === selectedRelation.relationtype_id);
-        const nextTypeIndex = (currentTypeIndex + 1) % relationTypes.length;
-        const nextRelationType = relationTypes[nextTypeIndex];
-
-        // 기존 관계 삭제 후 새로운 관계타입으로 다시 생성
-        changeRelationType(selectedRelation, nextRelationType.relationtype_id);
-      }
-    } else if (e.key === 'Delete' || e.key === 'Backspace') {
-      // Delete/Backspace: 선택된 관계 삭제
-      e.preventDefault();
-      if (!isAddingRelation && selectedRelationIndex >= 0 && selectedRelationIndex < sortedRelations.length) {
-        const selectedRelation = sortedRelations[selectedRelationIndex];
-        deleteRelation(selectedRelation);
-      }
-    } else if (e.key === 'Escape') {
-      e.preventDefault();
-      if (isAddingRelation) {
-        // 새로운 관계 추가 취소
-        setIsAddingRelation(false);
-        setNewRelationType('');
-        setNewTargetCard('');
-      } else {
-        setSelectedRelationIndex(-1);
-        setIsRelationListFocused(false);
-      }
-    }
-  };
-
   // 새로운 관계 저장 함수
   const saveNewRelation = async () => {
     if (!currentCardId || !newRelationType.trim() || !newTargetCard.trim()) {
@@ -1772,11 +1792,15 @@ function Home() {
   };
 
   // 관계 삭제 함수
-  const deleteRelation = async (relation: any) => {
+  const deleteCurrentRelation = async (relation: any) => {
+    console.log('🗑️ [deleteCurrentRelation] 시작:', relation);
+
     try {
-      await window.electron.ipcRenderer.invoke('delete-relation', relation.relation_id);
+      const res = await window.electron.ipcRenderer.invoke('delete-relation', relation.relation_id);
+      console.log('🗑️ [deleteCurrentRelation] IPC 응답:', res);
 
       // 관계 목록 새로고침
+      console.log('🔄 [deleteCurrentRelation] 관계 데이터 새로고침 시작');
       await loadRelations(currentCardId);
       await loadAllRelations();
 
@@ -1787,9 +1811,10 @@ function Home() {
         return prev;
       });
 
+      console.log('✅ [deleteCurrentRelation] 관계 삭제 성공');
       showToast('관계가 삭제되었습니다');
     } catch (error) {
-      console.error('관계 삭제 실패:', error);
+      console.error('❌ [deleteCurrentRelation] 관계 삭제 실패:', error);
       showToast('관계 삭제에 실패했습니다');
     }
   };
@@ -1941,6 +1966,65 @@ function Home() {
                 </button>
               </div>
             )}
+          </div>
+        )}
+
+        {/* 서브카드 필터링 상태 표시 */}
+        {!isLeftCollapsed && subcardsOnlyFilter.enabled && subcardsOnlyFilter.relationTypeName && subcardsOnlyFilter.targetCardTitle && (
+          <div style={{
+            padding: '12px',
+            borderBottom: '1px solid #333',
+            background: '#2a2a2a',
+            borderLeft: '4px solid #4CAF50'
+          }}>
+            <div style={{
+              fontSize: 12,
+              color: '#4CAF50',
+              marginBottom: 4,
+              fontWeight: 'bold'
+            }}>
+              하위카드만 조회 활성화
+            </div>
+            <div style={{
+              fontSize: 13,
+              color: '#ccc',
+              marginBottom: 8,
+              lineHeight: 1.4
+            }}>
+              <span style={{ color: '#888' }}>기준:</span>
+              <span style={{ color: '#ffa726', fontWeight: 'bold' }}>{subcardsOnlyFilter.relationTypeName}</span>
+              {' → '}
+              <span
+                style={{
+                  color: '#4CAF50',
+                  fontWeight: 'bold',
+                  cursor: 'pointer',
+                  textDecoration: 'underline',
+                  textDecorationStyle: 'dotted'
+                }}
+                onClick={() => {
+                  setSourceCardInput(subcardsOnlyFilter.targetCardTitle);
+                  // 해당 카드 ID 찾기
+                  const targetCard = cards.find(card => card.title === subcardsOnlyFilter.targetCardTitle);
+                  if (targetCard) {
+                    setCurrentCardId(targetCard.id);
+                    loadRelations(targetCard.id);
+                    loadCardDetail(targetCard.id);
+                    loadCardAliases(targetCard.id);
+                  }
+                }}
+                title="클릭하여 src 카드로 설정"
+              >
+                {subcardsOnlyFilter.targetCardTitle}
+              </span>
+            </div>
+            <div style={{
+              fontSize: 11,
+              color: '#888',
+              fontStyle: 'italic'
+            }}>
+              위 목표 카드를 향한 관계 체인의 카드들만 표시 중
+            </div>
           </div>
         )}
 
@@ -2144,12 +2228,6 @@ function Home() {
 
         {/* 관계 목록 실제 표시 */}
         <div style={{marginTop:8}}>
-          <p style={{fontSize:12,color:'#888',margin:'0 0 4px 0'}}>
-            {isAddingRelation
-              ? 'Enter(저장→다음) | Tab(필드이동/관계타입변경) | Esc(추가종료)'
-              : 'Enter(다음/추가) | Cmd+Enter(이동) | Tab(관계타입변경) | Delete(삭제) | ↑↓(선택) | Esc(취소)'
-            }
-          </p>
                     <ul
             style={{
               listStyle:'none',
@@ -2157,35 +2235,11 @@ function Home() {
               maxHeight:160,
               overflowY:'auto',
               border:'1px solid #444',
-              outline: isRelationListFocused ? '2px solid #0066cc' : 'none',
               cursor: 'pointer'
-            }}
-            tabIndex={!isAddingRelation ? 0 : -1}
-            onKeyDown={handleRelationKeyDown}
-            onFocus={() => {
-              setIsRelationListFocused(true);
-              if (relations.length > 0 && selectedRelationIndex === -1) {
-                setSelectedRelationIndex(0);
-              }
-            }}
-            onBlur={(e) => {
-              // 관계 목록 내부로 포커스가 이동하는 경우가 아닐 때만 blur 처리
-              if (!e.currentTarget.contains(e.relatedTarget as Node)) {
-                setIsRelationListFocused(false);
-                setSelectedRelationIndex(-1);
-              }
-            }}
-            onClick={() => {
-              if (!isRelationListFocused) {
-                setIsRelationListFocused(true);
-                if (relations.length > 0 && selectedRelationIndex === -1) {
-                  setSelectedRelationIndex(0);
-                }
-              }
             }}
           >
             {relations.length===0 && !isAddingRelation ? (
-              <li style={{padding:4,color:'#888'}}>관계가 없습니다. Enter로 관계 추가</li>
+              <li style={{padding:4,color:'#888'}}>관계가 없습니다.</li>
             ) : (
               <>
                 {relations.sort((a, b) => a.relationtype_id - b.relationtype_id).map((r, index) => (
@@ -2193,46 +2247,58 @@ function Home() {
                     key={r.relation_id}
                     style={{
                       display:'flex',
-                      gap:12,
+                      gap:8,
                       padding:'4px 8px',
                       borderBottom:'1px solid #333',
-                      cursor:'pointer',
-                      background: selectedRelationIndex === index ? '#0066cc' : 'transparent',
-                      color: selectedRelationIndex === index ? '#fff' : 'inherit'
-                    }}
-                    title={`클릭하여 ${r.target_title ?? r.target} 카드로 이동`}
-                    onClick={()=>{
-                      const tgtTitle = r.target_title || r.target;
-                      setCardTitleInput(tgtTitle);
-                      setCurrentCardId(r.target);
-                    }}
-                    onMouseEnter={() => {
-                      if (isRelationListFocused && !isAddingRelation) {
-                        setSelectedRelationIndex(index);
-                      }
+                      background: 'transparent',
+                      color: 'inherit',
+                      alignItems: 'center'
                     }}
                   >
                     <span style={{
                       fontWeight:600,
                       minWidth: 60,
-                      opacity: selectedRelationIndex === index ? 1 : 0.9
+                      opacity: 0.9
                     }}>
                       {r.typename}
                     </span>
-                    <span style={{
+                    <span
+                      style={{
                       flex:1,
                       whiteSpace:'nowrap',
                       overflow:'hidden',
-                      textOverflow:'ellipsis'
-                    }}>
+                        textOverflow:'ellipsis',
+                        cursor:'pointer'
+                      }}
+                      title={`클릭하여 ${r.target_title ?? r.target} 카드로 이동`}
+                      onClick={()=>{
+                        const tgtTitle = r.target_title || r.target;
+                        setCardTitleInput(tgtTitle);
+                        setCurrentCardId(r.target);
+                      }}
+                    >
                       {r.target_title ?? r.target}
                     </span>
-                    {selectedRelationIndex === index && !isAddingRelation && (
-                      <div style={{fontSize:10,opacity:0.8,display:'flex',flexDirection:'column',alignItems:'flex-end'}}>
-                        <span>Tab: 변경</span>
-                        <span>Del: 삭제</span>
-                      </div>
-                    )}
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        deleteCurrentRelation(r);
+                      }}
+                      style={{
+                        background: '#dc3545',
+                        color: '#fff',
+                        border: 'none',
+                        borderRadius: 3,
+                        padding: '2px 6px',
+                        fontSize: 11,
+                        cursor: 'pointer',
+                        minWidth: 'auto',
+                        flexShrink: 0
+                      }}
+                      title="관계 삭제"
+                    >
+                      ×
+                    </button>
                   </li>
                 ))}
 
@@ -3000,7 +3066,147 @@ function Home() {
               </button>
             </div>
 
-            {/* 카드타입 필터 */}
+
+            {/* 1. 하위카드만 조회 */}
+            <div style={{ marginBottom: 24, border: '1px solid #555', borderRadius: 8, padding: 16 }}>
+              <h4 style={{ margin: '0 0 12px 0', color: '#ccc', fontSize: 16 }}>하위카드만 조회</h4>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 8, color: '#fff', marginBottom: 8 }}>
+                <input
+                  type="checkbox"
+                  checked={subcardsOnlyFilter.enabled}
+                  onChange={(e) => setSubcardsOnlyFilter(prev => ({ ...prev, enabled: e.target.checked }))}
+                  style={{ transform: 'scale(1.2)' }}
+                />
+                <span>관계 체인 따라 필터링 활성화</span>
+              </label>
+              {subcardsOnlyFilter.enabled && (
+                <div style={{ marginLeft: 24, display: 'flex', flexDirection: 'column', gap: 12 }}>
+                  {/* 관계 타입 선택 */}
+                  <div>
+                    <label style={{ display: 'block', color: '#ccc', marginBottom: 4, fontSize: 14 }}>
+                      기준 관계 타입:
+                    </label>
+                    <select
+                      value={subcardsOnlyFilter.relationTypeName}
+                      onChange={(e) => setSubcardsOnlyFilter(prev => ({ ...prev, relationTypeName: e.target.value }))}
+                      style={{
+                        width: '100%',
+                        padding: '8px',
+                        background: '#333',
+                        border: '1px solid #555',
+                        borderRadius: 4,
+                        color: '#fff'
+                      }}
+                    >
+                      <option value="">관계 타입을 선택하세요</option>
+                      {relationTypes.map((relType) => (
+                        <option key={relType.relationtype_id} value={relType.typename}>
+                          {relType.typename}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {/* 목표 카드 선택 */}
+                  <div style={{ position: 'relative' }}>
+                    <label style={{ display: 'block', color: '#ccc', marginBottom: 4, fontSize: 14 }}>
+                      목표 카드 이름:
+                    </label>
+                    <input
+                      type="text"
+                      value={subcardsOnlyFilter.targetCardTitle}
+                      onChange={(e) => {
+                        const value = e.target.value;
+                        setSubcardsOnlyFilter(prev => ({ ...prev, targetCardTitle: value }));
+                        filterSubcardsTargetCards(value);
+                      }}
+                      onKeyDown={handleSubcardsKeyDown}
+                      onFocus={() => {
+                        if (subcardsOnlyFilter.targetCardTitle.trim()) {
+                          filterSubcardsTargetCards(subcardsOnlyFilter.targetCardTitle);
+                        }
+                      }}
+                      onBlur={() => {
+                        // 약간의 지연을 두어 드롭다운 클릭 이벤트가 처리되도록 함
+                        setTimeout(() => setSubcardsDropdownVisible(false), 200);
+                      }}
+                      placeholder="카드 제목을 입력하세요"
+                      style={{
+                        width: '100%',
+                        padding: '8px',
+                        background: '#333',
+                        border: `1px solid ${subcardsDropdownVisible ? '#4CAF50' : '#555'}`,
+                        borderRadius: subcardsDropdownVisible ? '4px 4px 0 0' : 4,
+                        color: '#fff',
+                        outline: 'none'
+                      }}
+                    />
+
+                    {/* 자동완성 드롭다운 */}
+                    {subcardsDropdownVisible && filteredSubcardsTargets.length > 0 && (
+                      <div style={{
+                        position: 'absolute',
+                        top: '100%',
+                        left: 0,
+                        right: 0,
+                        background: '#333',
+                        border: '1px solid #4CAF50',
+                        borderTop: 'none',
+                        borderRadius: '0 0 4px 4px',
+                        maxHeight: '200px',
+                        overflowY: 'auto',
+                        zIndex: 3000
+                      }}>
+                        {filteredSubcardsTargets.map((card, index) => (
+                          <div
+                            key={card.id}
+                            style={{
+                              padding: '8px 12px',
+                              cursor: 'pointer',
+                              backgroundColor: index === subcardsSelectedIndex ? '#4CAF50' : 'transparent',
+                              color: index === subcardsSelectedIndex ? '#fff' : '#ccc',
+                              borderBottom: index < filteredSubcardsTargets.length - 1 ? '1px solid #555' : 'none'
+                            }}
+                            onClick={() => {
+                              setSubcardsOnlyFilter(prev => ({ ...prev, targetCardTitle: card.title }));
+                              setSubcardsDropdownVisible(false);
+                              setSubcardsSelectedIndex(-1);
+                            }}
+                          >
+                            <div style={{ fontWeight: 'bold' }}>{card.title}</div>
+                            {card.content && (
+                              <div style={{ fontSize: '0.8em', color: '#888', marginTop: '2px' }}>
+                                {card.content.length > 50
+                                  ? `${card.content.substring(0, 50)}...`
+                                  : card.content
+                                }
+                              </div>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* 설명 텍스트 */}
+                  <div style={{
+                    fontSize: 12,
+                    color: '#888',
+                    padding: '8px',
+                    background: '#1a1a1a',
+                    borderRadius: 4,
+                    border: '1px solid #333'
+                  }}>
+                    <strong>사용 예시:</strong><br/>
+                    관계 체인이 "A for B, B for C, C for D"이고<br/>
+                    관계 타입 = "for", 목표 카드 = "D"로 설정하면<br/>
+                    D로 이어지는 체인의 카드들(A, B, C)만 표시됩니다.
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* 2. 카드타입 필터 */}
             <div style={{ marginBottom: 24 }}>
               <h4 style={{ margin: '0 0 12px 0', color: '#ccc', fontSize: 16 }}>카드타입 필터</h4>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 8, maxHeight: 120, overflow: 'auto' }}>
@@ -3039,7 +3245,79 @@ function Home() {
               </button>
             </div>
 
-            {/* 금액 필터 */}
+            {/* 3. 관계 필터 */}
+            <div style={{ marginBottom: 20 }}>
+              <h4 style={{ margin: '0 0 12px 0', color: '#ccc', fontSize: 16 }}>관계 필터</h4>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 8, color: '#fff', marginBottom: 8 }}>
+                <input
+                  type="checkbox"
+                  checked={relationFilter.enabled}
+                  onChange={(e) => setRelationFilter(prev => ({ ...prev, enabled: e.target.checked }))}
+                  style={{ transform: 'scale(1.2)' }}
+                />
+                <span>관계 필터링 활성화</span>
+              </label>
+              {relationFilter.enabled && (
+                <div style={{ marginLeft: 24 }}>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 8, color: '#ccc', marginBottom: 4 }}>
+                    <input
+                      type="radio"
+                      name="relationFilter"
+                      checked={relationFilter.type === 'no-relations'}
+                      onChange={() => setRelationFilter(prev => ({ ...prev, type: 'no-relations' }))}
+                    />
+                    <span>관계 없는 카드만 표시</span>
+                  </label>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 8, color: '#ccc' }}>
+                    <input
+                      type="radio"
+                      name="relationFilter"
+                      checked={relationFilter.type === 'has-relations'}
+                      onChange={() => setRelationFilter(prev => ({ ...prev, type: 'has-relations' }))}
+                    />
+                    <span>관계 있는 카드만 표시</span>
+                  </label>
+                </div>
+              )}
+            </div>
+
+            {/* 4. 날짜 필터 */}
+            <div style={{ marginBottom: 20 }}>
+              <h4 style={{ margin: '0 0 12px 0', color: '#ccc', fontSize: 16 }}>날짜 필터</h4>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 8, color: '#fff', marginBottom: 8 }}>
+                <input
+                  type="checkbox"
+                  checked={dateFilter.enabled}
+                  onChange={(e) => setDateFilter(prev => ({ ...prev, enabled: e.target.checked }))}
+                  style={{ transform: 'scale(1.2)' }}
+                />
+                <span>날짜 필터링 활성화</span>
+              </label>
+              {dateFilter.enabled && (
+                <div style={{ marginLeft: 24 }}>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 8, color: '#ccc', marginBottom: 4 }}>
+                    <input
+                      type="radio"
+                      name="dateFilter"
+                      checked={dateFilter.type === 'has-date'}
+                      onChange={() => setDateFilter(prev => ({ ...prev, type: 'has-date' }))}
+                    />
+                    <span>날짜 지정된 카드만 표시</span>
+                  </label>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 8, color: '#ccc' }}>
+                    <input
+                      type="radio"
+                      name="dateFilter"
+                      checked={dateFilter.type === 'no-date'}
+                      onChange={() => setDateFilter(prev => ({ ...prev, type: 'no-date' }))}
+                    />
+                    <span>날짜 미지정 카드만 표시</span>
+                  </label>
+                </div>
+              )}
+            </div>
+
+            {/* 5. 금액 필터 */}
             <div style={{ marginBottom: 24 }}>
               <h4 style={{ margin: '0 0 12px 0', color: '#ccc', fontSize: 16 }}>금액 필터</h4>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
@@ -3086,7 +3364,7 @@ function Home() {
               </div>
             </div>
 
-            {/* 정렬 옵션 */}
+            {/* 6. 정렬 옵션 */}
             <div style={{ marginBottom: 24 }}>
               <h4 style={{ margin: '0 0 12px 0', color: '#ccc', fontSize: 16 }}>정렬 옵션</h4>
 
@@ -3105,6 +3383,26 @@ function Home() {
                 </label>
                 {sortOptions.relationCount.enabled && (
                   <div style={{ marginLeft: 24 }}>
+                    <div style={{ marginBottom: 12 }}>
+                      <select
+                        value={sortOptions.relationCount.order}
+                        onChange={(e) => setSortOptions(prev => ({
+                          ...prev,
+                          relationCount: { ...prev.relationCount, order: e.target.value as 'desc' | 'asc' }
+                        }))}
+                        style={{
+                          padding: '6px 8px',
+                          background: '#333',
+                          border: '1px solid #555',
+                          color: '#fff',
+                          borderRadius: 4,
+                          fontSize: 13
+                        }}
+                      >
+                        <option value="desc">많은 것부터 (내림차순)</option>
+                        <option value="asc">적은 것부터 (오름차순)</option>
+                      </select>
+                    </div>
                     <div style={{ marginBottom: 8, fontSize: 14, color: '#aaa' }}>기준 관계타입 (복수선택 가능):</div>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 4, maxHeight: 100, overflow: 'auto' }}>
                       {relationTypes.map((relType) => (
@@ -3213,217 +3511,6 @@ function Home() {
               </div>
             </div>
 
-            {/* 관계 필터 */}
-            <div style={{ marginBottom: 20 }}>
-              <h4 style={{ margin: '0 0 12px 0', color: '#ccc', fontSize: 16 }}>관계 필터</h4>
-              <label style={{ display: 'flex', alignItems: 'center', gap: 8, color: '#fff', marginBottom: 8 }}>
-                <input
-                  type="checkbox"
-                  checked={relationFilter.enabled}
-                  onChange={(e) => setRelationFilter(prev => ({ ...prev, enabled: e.target.checked }))}
-                  style={{ transform: 'scale(1.2)' }}
-                />
-                <span>관계 필터링 활성화</span>
-              </label>
-              {relationFilter.enabled && (
-                <div style={{ marginLeft: 24 }}>
-                  <label style={{ display: 'flex', alignItems: 'center', gap: 8, color: '#ccc', marginBottom: 4 }}>
-                    <input
-                      type="radio"
-                      name="relationFilter"
-                      checked={relationFilter.type === 'no-relations'}
-                      onChange={() => setRelationFilter(prev => ({ ...prev, type: 'no-relations' }))}
-                    />
-                    <span>관계 없는 카드만 표시</span>
-                  </label>
-                  <label style={{ display: 'flex', alignItems: 'center', gap: 8, color: '#ccc' }}>
-                    <input
-                      type="radio"
-                      name="relationFilter"
-                      checked={relationFilter.type === 'has-relations'}
-                      onChange={() => setRelationFilter(prev => ({ ...prev, type: 'has-relations' }))}
-                    />
-                    <span>관계 있는 카드만 표시</span>
-                  </label>
-                </div>
-              )}
-            </div>
-
-            {/* 날짜 필터 */}
-            <div style={{ marginBottom: 20 }}>
-              <h4 style={{ margin: '0 0 12px 0', color: '#ccc', fontSize: 16 }}>날짜 필터</h4>
-              <label style={{ display: 'flex', alignItems: 'center', gap: 8, color: '#fff', marginBottom: 8 }}>
-                <input
-                  type="checkbox"
-                  checked={dateFilter.enabled}
-                  onChange={(e) => setDateFilter(prev => ({ ...prev, enabled: e.target.checked }))}
-                  style={{ transform: 'scale(1.2)' }}
-                />
-                <span>날짜 필터링 활성화</span>
-              </label>
-              {dateFilter.enabled && (
-                <div style={{ marginLeft: 24 }}>
-                  <label style={{ display: 'flex', alignItems: 'center', gap: 8, color: '#ccc', marginBottom: 4 }}>
-                    <input
-                      type="radio"
-                      name="dateFilter"
-                      checked={dateFilter.type === 'has-date'}
-                      onChange={() => setDateFilter(prev => ({ ...prev, type: 'has-date' }))}
-                    />
-                    <span>날짜 지정된 카드만 표시</span>
-                  </label>
-                  <label style={{ display: 'flex', alignItems: 'center', gap: 8, color: '#ccc' }}>
-                    <input
-                      type="radio"
-                      name="dateFilter"
-                      checked={dateFilter.type === 'no-date'}
-                      onChange={() => setDateFilter(prev => ({ ...prev, type: 'no-date' }))}
-                    />
-                    <span>날짜 미지정 카드만 표시</span>
-                  </label>
-                </div>
-              )}
-            </div>
-
-            {/* 서브카드 전용 정렬 필터 */}
-            <div style={{ marginBottom: 20 }}>
-              <h4 style={{ margin: '0 0 12px 0', color: '#ccc', fontSize: 16 }}>서브카드 전용 정렬</h4>
-              <label style={{ display: 'flex', alignItems: 'center', gap: 8, color: '#fff', marginBottom: 8 }}>
-                <input
-                  type="checkbox"
-                  checked={subcardsOnlyFilter.enabled}
-                  onChange={(e) => setSubcardsOnlyFilter(prev => ({ ...prev, enabled: e.target.checked }))}
-                  style={{ transform: 'scale(1.2)' }}
-                />
-                <span>관계 체인 따라 필터링 활성화</span>
-              </label>
-              {subcardsOnlyFilter.enabled && (
-                <div style={{ marginLeft: 24, display: 'flex', flexDirection: 'column', gap: 12 }}>
-                  {/* 관계 타입 선택 */}
-                  <div>
-                    <label style={{ display: 'block', color: '#ccc', marginBottom: 4, fontSize: 14 }}>
-                      기준 관계 타입:
-                    </label>
-                    <select
-                      value={subcardsOnlyFilter.relationTypeName}
-                      onChange={(e) => setSubcardsOnlyFilter(prev => ({ ...prev, relationTypeName: e.target.value }))}
-                      style={{
-                        width: '100%',
-                        padding: '8px',
-                        background: '#333',
-                        border: '1px solid #555',
-                        borderRadius: 4,
-                        color: '#fff'
-                      }}
-                    >
-                      <option value="">관계 타입을 선택하세요</option>
-                      {relationTypes.map((relType) => (
-                        <option key={relType.relationtype_id} value={relType.typename}>
-                          {relType.typename}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-
-                  {/* 목표 카드 선택 */}
-                  <div style={{ position: 'relative' }}>
-                    <label style={{ display: 'block', color: '#ccc', marginBottom: 4, fontSize: 14 }}>
-                      목표 카드 이름:
-                    </label>
-                    <input
-                      type="text"
-                      value={subcardsOnlyFilter.targetCardTitle}
-                      onChange={(e) => {
-                        const value = e.target.value;
-                        setSubcardsOnlyFilter(prev => ({ ...prev, targetCardTitle: value }));
-                        filterSubcardsTargetCards(value);
-                      }}
-                      onKeyDown={handleSubcardsKeyDown}
-                      onFocus={() => {
-                        if (subcardsOnlyFilter.targetCardTitle.trim()) {
-                          filterSubcardsTargetCards(subcardsOnlyFilter.targetCardTitle);
-                        }
-                      }}
-                      onBlur={() => {
-                        // 약간의 지연을 두어 드롭다운 클릭 이벤트가 처리되도록 함
-                        setTimeout(() => setSubcardsDropdownVisible(false), 200);
-                      }}
-                      placeholder="카드 제목을 입력하세요"
-                      style={{
-                        width: '100%',
-                        padding: '8px',
-                        background: '#333',
-                        border: `1px solid ${subcardsDropdownVisible ? '#4CAF50' : '#555'}`,
-                        borderRadius: subcardsDropdownVisible ? '4px 4px 0 0' : 4,
-                        color: '#fff',
-                        outline: 'none'
-                      }}
-                    />
-                    
-                    {/* 자동완성 드롭다운 */}
-                    {subcardsDropdownVisible && filteredSubcardsTargets.length > 0 && (
-                      <div style={{
-                        position: 'absolute',
-                        top: '100%',
-                        left: 0,
-                        right: 0,
-                        background: '#333',
-                        border: '1px solid #4CAF50',
-                        borderTop: 'none',
-                        borderRadius: '0 0 4px 4px',
-                        maxHeight: '200px',
-                        overflowY: 'auto',
-                        zIndex: 3000
-                      }}>
-                        {filteredSubcardsTargets.map((card, index) => (
-                          <div
-                            key={card.id}
-                            style={{
-                              padding: '8px 12px',
-                              cursor: 'pointer',
-                              backgroundColor: index === subcardsSelectedIndex ? '#4CAF50' : 'transparent',
-                              color: index === subcardsSelectedIndex ? '#fff' : '#ccc',
-                              borderBottom: index < filteredSubcardsTargets.length - 1 ? '1px solid #555' : 'none'
-                            }}
-                            onClick={() => {
-                              setSubcardsOnlyFilter(prev => ({ ...prev, targetCardTitle: card.title }));
-                              setSubcardsDropdownVisible(false);
-                              setSubcardsSelectedIndex(-1);
-                            }}
-                          >
-                            <div style={{ fontWeight: 'bold' }}>{card.title}</div>
-                            {card.content && (
-                              <div style={{ fontSize: '0.8em', color: '#888', marginTop: '2px' }}>
-                                {card.content.length > 50 
-                                  ? `${card.content.substring(0, 50)}...`
-                                  : card.content
-                                }
-                              </div>
-                            )}
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-
-                  {/* 설명 텍스트 */}
-                  <div style={{
-                    fontSize: 12,
-                    color: '#888',
-                    padding: '8px',
-                    background: '#1a1a1a',
-                    borderRadius: 4,
-                    border: '1px solid #333'
-                  }}>
-                    <strong>사용 예시:</strong><br/>
-                    관계 체인이 "A for B, B for C, C for D"이고<br/>
-                    관계 타입 = "for", 목표 카드 = "D"로 설정하면<br/>
-                    D로 이어지는 체인의 카드들(A, B, C)만 표시됩니다.
-                  </div>
-                </div>
-              )}
-            </div>
-
             {/* 적용/초기화 버튼 */}
             <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
               <button
@@ -3437,7 +3524,7 @@ function Home() {
                   setSubcardsSelectedIndex(-1);
                   setAmountFilter({ enabled: false, amount: '', operator: 'gte' });
                   setSortOptions({
-                    relationCount: { enabled: false, relationTypes: [] },
+                    relationCount: { enabled: false, relationTypes: [], order: 'desc' },
                     amount: { enabled: false, order: 'desc' },
                     completion: { enabled: false, order: 'incomplete-first' }
                   });
@@ -4951,18 +5038,18 @@ function Visualization() {
     setTimeout(() => setToast(''), 3000);
   };
 
-  // 카드별 관계 수 계산
+  // 카드별 관계 수 계산 (현재관계창과 동일: source인 관계만)
   const getRelationCount = (cardId: string) => {
-    return allRelations.filter(rel => rel.source === cardId || rel.target === cardId).length;
+    return allRelations.filter(rel => rel.source === cardId).length;
   };
 
-  // 특정 관계타입별 관계 수 계산
+  // 특정 관계타입별 관계 수 계산 (현재관계창과 동일: source인 관계만)
   const getRelationCountByType = (cardId: string, relationTypeName: string) => {
     const relationType = relationTypes.find(rt => rt.typename === relationTypeName);
     if (!relationType) return 0;
 
     return allRelations.filter(rel =>
-      (rel.source === cardId || rel.target === cardId) &&
+      rel.source === cardId &&
       rel.relationtype_id === relationType.relationtype_id
     ).length;
   };
@@ -5948,23 +6035,23 @@ function Settings() {
       padding: 0
     }}>
       <div style={{ padding: 20, maxWidth: 800, margin: '0 auto', paddingBottom: 40 }}>
-        {/* 토스트 메시지 */}
-        {toast && (
-          <div style={{
-            position: 'fixed',
-            top: 20,
-            right: 20,
-            background: '#0066cc',
-            color: '#fff',
-            padding: '12px 20px',
-            borderRadius: 6,
-            boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
-            zIndex: 1000,
-            fontSize: 14
-          }}>
-            {toast}
-          </div>
-        )}
+      {/* 토스트 메시지 */}
+      {toast && (
+        <div style={{
+          position: 'fixed',
+          top: 20,
+          right: 20,
+          background: '#0066cc',
+          color: '#fff',
+          padding: '12px 20px',
+          borderRadius: 6,
+          boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
+          zIndex: 1000,
+          fontSize: 14
+        }}>
+          {toast}
+        </div>
+      )}
 
       <h2 style={{ marginTop: 0, marginBottom: 32, color: '#fff' }}>설정</h2>
 
@@ -7023,23 +7110,23 @@ function Analytics() {
       padding: 0
     }}>
       <div style={{ padding: 20, maxWidth: 1400, margin: '0 auto', paddingBottom: 40 }}>
-        {/* 토스트 메시지 */}
-        {toast && (
-          <div style={{
-            position: 'fixed',
-            top: 20,
-            right: 20,
-            background: '#0066cc',
-            color: '#fff',
-            padding: '12px 20px',
-            borderRadius: 6,
-            boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
-            zIndex: 1000,
-            fontSize: 14
-          }}>
-            {toast}
-          </div>
-        )}
+      {/* 토스트 메시지 */}
+      {toast && (
+        <div style={{
+          position: 'fixed',
+          top: 20,
+          right: 20,
+          background: '#0066cc',
+          color: '#fff',
+          padding: '12px 20px',
+          borderRadius: 6,
+          boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
+          zIndex: 1000,
+          fontSize: 14
+        }}>
+          {toast}
+        </div>
+      )}
 
       <h2 style={{ marginTop: 0, marginBottom: 32, color: '#fff' }}>사용 분석</h2>
 
@@ -7357,6 +7444,13 @@ function RelationManage() {
 
   const addRelation = async () => {
     if(!src || !rt || !tgt) return;
+
+    // Source와 Target이 같은 경우 방지
+    if(src === tgt) {
+      alert('자기 자신과의 관계는 만들 수 없습니다');
+      return;
+    }
+
     const res = await window.electron.ipcRenderer.invoke('create-relation', {
       relationtype_id: Number(rt),
       source: src,
@@ -7427,6 +7521,7 @@ function RelationManage() {
   };
 
   return (
+    <div style={{ height: '100%', overflowY: 'auto', padding: 0 }}>
     <div style={{ padding: 20, maxWidth: 1200, margin: '0 auto' }}>
       <h2 style={{ marginTop: 0, marginBottom: 24, color: '#fff' }}>관계 목록</h2>
 
@@ -7708,6 +7803,7 @@ function RelationManage() {
         </tbody>
       </table>
       </div>
+      </div>
     </div>
   );
 }
@@ -7717,43 +7813,43 @@ export default function App() {
     <Router>
       <div style={{ height: '100vh', display: 'flex', flexDirection: 'column' }}>
         <nav style={{ padding: 12, background: '#222', flexShrink: 0 }}>
-          {[
-            { to: '/', label: '홈' },
-            { to: '/visualization', label: '시각화' },
-            { to: '/cardtypes', label: '카드타입' },
-            { to: '/relationtypes', label: '관계타입' },
-            { to: '/relations', label: '관계' },
+        {[
+          { to: '/', label: '홈' },
+          { to: '/visualization', label: '시각화' },
+          { to: '/cardtypes', label: '카드타입' },
+          { to: '/relationtypes', label: '관계타입' },
+          { to: '/relations', label: '관계' },
             { to: '/projects', label: '프로젝트' },
-            { to: '/trash', label: '휴지통' },
-            { to: '/analytics', label: '분석' },
-            { to: '/settings', label: '설정' },
-          ].map((item) => (
-            <Link
-              key={item.to}
-              to={item.to}
-              onClick={() => {
-                // 페이지 방문 로깅
-                window.electron.ipcRenderer.invoke('log-page-visit', item.to.substring(1) || 'home');
-              }}
-              style={{ color: '#fff', marginRight: 16, textDecoration: 'none' }}
-            >
-              {item.label}
-            </Link>
-          ))}
-        </nav>
+          { to: '/trash', label: '휴지통' },
+          { to: '/analytics', label: '분석' },
+          { to: '/settings', label: '설정' },
+        ].map((item) => (
+          <Link
+            key={item.to}
+            to={item.to}
+            onClick={() => {
+              // 페이지 방문 로깅
+              window.electron.ipcRenderer.invoke('log-page-visit', item.to.substring(1) || 'home');
+            }}
+            style={{ color: '#fff', marginRight: 16, textDecoration: 'none' }}
+          >
+            {item.label}
+          </Link>
+        ))}
+      </nav>
 
         <div style={{ flex: 1, overflow: 'hidden' }}>
-          <Routes>
-            <Route path="/" element={<Home />} />
-            <Route path="/visualization" element={<Visualization />} />
-            <Route path="/cardtypes" element={<CardTypeManage />} />
-            <Route path="/relationtypes" element={<RelationTypeManage />} />
-            <Route path="/relations" element={<RelationManage />} />
+      <Routes>
+        <Route path="/" element={<Home />} />
+        <Route path="/visualization" element={<Visualization />} />
+        <Route path="/cardtypes" element={<CardTypeManage />} />
+        <Route path="/relationtypes" element={<RelationTypeManage />} />
+        <Route path="/relations" element={<RelationManage />} />
             <Route path="/projects" element={<ProjectManage />} />
-            <Route path="/trash" element={<TrashManage />} />
-            <Route path="/analytics" element={<Analytics />} />
-            <Route path="/settings" element={<Settings />} />
-          </Routes>
+        <Route path="/trash" element={<TrashManage />} />
+        <Route path="/analytics" element={<Analytics />} />
+        <Route path="/settings" element={<Settings />} />
+      </Routes>
         </div>
       </div>
     </Router>
@@ -7812,6 +7908,12 @@ function RelationForm({ cards, refreshCards }: { cards: { id: string; title: str
       }
     } else {
       tgtId = tgtFound.id;
+    }
+
+    // Source와 Target이 같은 경우 방지
+    if (srcId === tgtId) {
+      alert('자기 자신과의 관계는 만들 수 없습니다');
+      return;
     }
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
