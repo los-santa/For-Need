@@ -2222,9 +2222,30 @@ function Home() {
         {!isLeftCollapsed && (
         <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
           {getSortedCards().map((c) => {
-            const relationCount = sortByRelationType === 'all'
-              ? getRelationCount(c.id)
-              : getRelationCountByType(c.id, sortByRelationType);
+            // 필터링 시스템의 보유관계순 설정을 사용
+            let relationCount = 0;
+            let displayText = '';
+            
+            if (sortOptions.relationCount.enabled) {
+              if (sortOptions.relationCount.relationTypes.length > 0) {
+                // 선택된 관계타입들의 합계
+                sortOptions.relationCount.relationTypes.forEach(typeName => {
+                  relationCount += getRelationCountByType(c.id, typeName);
+                });
+                displayText = sortOptions.relationCount.relationTypes.length === 1 
+                  ? `${sortOptions.relationCount.relationTypes[0]} ${relationCount}개`
+                  : `선택타입 ${relationCount}개`;
+              } else {
+                // 모든 관계타입 합계
+                relationCount = getRelationCount(c.id);
+                displayText = `전체관계 ${relationCount}개`;
+              }
+            } else {
+              // 보유관계순이 비활성화된 경우 전체 관계 개수
+              relationCount = getRelationCount(c.id);
+              displayText = `관계 ${relationCount}개`;
+            }
+            
             return (
             <li
               key={c.id}
@@ -2249,7 +2270,7 @@ function Home() {
               <div style={{flex:1,overflow:'hidden',display:'flex',flexDirection:'column'}}>
                 <span style={{overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{c.title}</span>
                 <span style={{fontSize:'11px',color:'#888'}}>
-                  {sortByRelationType === 'all' ? `관계 ${relationCount}개` : `${sortByRelationType} ${relationCount}개`}
+                  {displayText}
                 </span>
               </div>
               <button
@@ -3290,7 +3311,7 @@ function Home() {
                 >
                   기본 필터
                 </button>
-                
+
                 {/* 저장된 프리셋 탭들 */}
                 {filterPresets.map((preset, index) => (
                   <div key={preset.id} style={{ display: 'flex', alignItems: 'center' }}>
@@ -3342,7 +3363,7 @@ function Home() {
                     </button>
                   </div>
                 ))}
-                
+
                 {/* 프리셋 추가 버튼 */}
                 <button
                   onClick={() => setShowPresetModal(true)}
@@ -6142,13 +6163,31 @@ function Visualization() {
                   <h4 style={{ margin: '0 0 12px 0', color: '#333', fontSize: 16 }}>
                     🔥 해야할 일 ({getSortedCards().filter(c => !c.complete).length})
                     <span style={{ fontSize: 12, fontWeight: 'normal', color: '#666', marginLeft: 8 }}>
-                      {sortByRelationType === 'all' ? '전체관계순' : `${sortByRelationType}순`}
+                      {sortOptions.relationCount.enabled ? (
+                        sortOptions.relationCount.relationTypes.length > 0 
+                          ? `${sortOptions.relationCount.relationTypes.join(', ')}순`
+                          : '전체관계순'
+                      ) : '기본순'}
                     </span>
                   </h4>
                   {getSortedCards().filter(c => !c.complete).map(card => {
-                    const relationCount = sortByRelationType === 'all'
-                      ? getRelationCount(card.id)
-                      : getRelationCountByType(card.id, sortByRelationType);
+                    // 필터링 시스템의 보유관계순 설정을 사용
+                    let relationCount = 0;
+                    
+                    if (sortOptions.relationCount.enabled) {
+                      if (sortOptions.relationCount.relationTypes.length > 0) {
+                        // 선택된 관계타입들의 합계
+                        sortOptions.relationCount.relationTypes.forEach(typeName => {
+                          relationCount += getRelationCountByType(card.id, typeName);
+                        });
+                      } else {
+                        // 모든 관계타입 합계
+                        relationCount = getRelationCount(card.id);
+                      }
+                    } else {
+                      // 보유관계순이 비활성화된 경우 전체 관계 개수
+                      relationCount = getRelationCount(card.id);
+                    }
 
                     return (
                       <div key={card.id} style={{ position: 'relative' }}>
@@ -6189,9 +6228,23 @@ function Visualization() {
                       ✅ 완료된 일 ({getSortedCards().filter(c => c.complete).length})
                     </h4>
                     {getSortedCards().filter(c => c.complete).map(card => {
-                      const relationCount = sortByRelationType === 'all'
-                        ? getRelationCount(card.id)
-                        : getRelationCountByType(card.id, sortByRelationType);
+                      // 필터링 시스템의 보유관계순 설정을 사용
+                      let relationCount = 0;
+                      
+                      if (sortOptions.relationCount.enabled) {
+                        if (sortOptions.relationCount.relationTypes.length > 0) {
+                          // 선택된 관계타입들의 합계
+                          sortOptions.relationCount.relationTypes.forEach(typeName => {
+                            relationCount += getRelationCountByType(card.id, typeName);
+                          });
+                        } else {
+                          // 모든 관계타입 합계
+                          relationCount = getRelationCount(card.id);
+                        }
+                      } else {
+                        // 보유관계순이 비활성화된 경우 전체 관계 개수
+                        relationCount = getRelationCount(card.id);
+                      }
 
                       return (
                         <div key={card.id} style={{ position: 'relative' }}>
