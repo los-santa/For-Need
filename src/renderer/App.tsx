@@ -750,11 +750,11 @@ function Home() {
         projectFilter
       }
     };
-    
+
     const updatedPresets = [...filterPresets, newPreset];
     setFilterPresets(updatedPresets);
     localStorage.setItem('forneed-filter-presets', JSON.stringify(updatedPresets));
-    
+
     // 저장 후에도 기본 필터 탭에 그대로 유지 (탭 이동하지 않음)
     // 성공 메시지 표시
     setSaveSuccessMessage(`"${name}" 프리셋이 저장되었습니다!`);
@@ -3242,35 +3242,19 @@ function Home() {
           >
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
               <h3 style={{ margin: 0, color: '#fff', fontSize: 18 }}>필터링 및 정렬 옵션</h3>
-              <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                <button
-                  onClick={() => setShowPresetModal(true)}
-                  style={{
-                    background: '#4CAF50',
-                    border: 'none',
-                    color: '#fff',
-                    fontSize: 12,
-                    cursor: 'pointer',
-                    padding: '4px 8px',
-                    borderRadius: 4
-                  }}
-                >
-                  저장
-                </button>
-                <button
-                  onClick={() => setShowFilterModal(false)}
-                  style={{
-                    background: 'none',
-                    border: 'none',
-                    color: '#888',
-                    fontSize: 24,
-                    cursor: 'pointer',
-                    padding: 0
-                  }}
-                >
-                  ×
-                </button>
-              </div>
+              <button
+                onClick={() => setShowFilterModal(false)}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  color: '#888',
+                  fontSize: 24,
+                  cursor: 'pointer',
+                  padding: 0
+                }}
+              >
+                ×
+              </button>
             </div>
 
             {/* 저장 성공 메시지 */}
@@ -3291,7 +3275,7 @@ function Home() {
 
             {/* 탭 헤더 */}
             <div style={{ marginBottom: 20, borderBottom: '1px solid #444' }}>
-              <div style={{ display: 'flex', gap: 4 }}>
+              <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
                 {/* 기본 필터 탭 */}
                 <button
                   onClick={() => setCurrentPresetTab(-1)}
@@ -3306,7 +3290,7 @@ function Home() {
                 >
                   기본 필터
                 </button>
-
+                
                 {/* 저장된 프리셋 탭들 */}
                 {filterPresets.map((preset, index) => (
                   <div key={preset.id} style={{ display: 'flex', alignItems: 'center' }}>
@@ -3358,6 +3342,35 @@ function Home() {
                     </button>
                   </div>
                 ))}
+                
+                {/* 프리셋 추가 버튼 */}
+                <button
+                  onClick={() => setShowPresetModal(true)}
+                  style={{
+                    background: '#555',
+                    border: '1px dashed #777',
+                    color: '#aaa',
+                    padding: '6px 12px',
+                    cursor: 'pointer',
+                    borderRadius: 4,
+                    fontSize: 16,
+                    marginLeft: 8,
+                    transition: 'all 0.2s ease'
+                  }}
+                  title="새 프리셋 저장"
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.background = '#666';
+                    e.currentTarget.style.color = '#fff';
+                    e.currentTarget.style.borderColor = '#4CAF50';
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.background = '#555';
+                    e.currentTarget.style.color = '#aaa';
+                    e.currentTarget.style.borderColor = '#777';
+                  }}
+                >
+                  +
+                </button>
               </div>
             </div>
 
