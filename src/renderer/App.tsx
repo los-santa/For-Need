@@ -673,6 +673,38 @@ function Home() {
     type: (savedFilters && savedFilters.completionFilter && savedFilters.completionFilter.type) || 'completed-only' // 'completed-only' (완료된 것만), 'incomplete-only' (미완료된 것만)
   });
 
+  // 활성상태 필터
+  const [activateFilter, setActivateFilter] = useState({
+    enabled: (savedFilters && savedFilters.activateFilter && savedFilters.activateFilter.enabled) || false,
+    type: (savedFilters && savedFilters.activateFilter && savedFilters.activateFilter.type) || 'active-only' // 'active-only' (활성된 것만), 'inactive-only' (비활성된 것만)
+  });
+
+  // 소요시간 필터
+  const [durationFilter, setDurationFilter] = useState({
+    enabled: (savedFilters && savedFilters.durationFilter && savedFilters.durationFilter.enabled) || false,
+    duration: (savedFilters && savedFilters.durationFilter && savedFilters.durationFilter.duration) || '',
+    operator: (savedFilters && savedFilters.durationFilter && savedFilters.durationFilter.operator) || 'gte' // 'gte' (이상), 'lte' (이하)
+  });
+
+  // 내용 필터
+  const [contentFilter, setContentFilter] = useState({
+    enabled: (savedFilters && savedFilters.contentFilter && savedFilters.contentFilter.enabled) || false,
+    content: (savedFilters && savedFilters.contentFilter && savedFilters.contentFilter.content) || ''
+  });
+
+  // 생성일 필터
+  const [createDateFilter, setCreateDateFilter] = useState({
+    enabled: (savedFilters && savedFilters.createDateFilter && savedFilters.createDateFilter.enabled) || false,
+    startDate: (savedFilters && savedFilters.createDateFilter && savedFilters.createDateFilter.startDate) || '',
+    endDate: (savedFilters && savedFilters.createDateFilter && savedFilters.createDateFilter.endDate) || ''
+  });
+
+  // 프로젝트 필터
+  const [projectFilter, setProjectFilter] = useState({
+    enabled: (savedFilters && savedFilters.projectFilter && savedFilters.projectFilter.enabled) || false,
+    projectIds: (savedFilters && savedFilters.projectFilter && savedFilters.projectFilter.projectIds) || [] as string[]
+  });
+
   // 서브카드 필터의 자동완성 관련 상태
   const [subcardsDropdownVisible, setSubcardsDropdownVisible] = useState(false);
   const [filteredSubcardsTargets, setFilteredSubcardsTargets] = useState<any[]>([]);
@@ -1104,6 +1136,57 @@ function Home() {
       });
     }
 
+    // 활성상태 필터 적용
+    if (activateFilter && activateFilter.enabled) {
+      filteredCards = filteredCards.filter(card => {
+        const isActive = Boolean((card as any).activate);
+        return activateFilter.type === 'active-only' ? isActive : !isActive;
+      });
+    }
+
+    // 소요시간 필터 적용
+    if (durationFilter.enabled && durationFilter.duration) {
+      const filterDuration = parseInt(durationFilter.duration);
+      if (!isNaN(filterDuration)) {
+        filteredCards = filteredCards.filter(card => {
+          const cardDuration = parseInt((card as any).duration || 0);
+          if (durationFilter.operator === 'gte') {
+            return cardDuration >= filterDuration;
+          } else {
+            return cardDuration <= filterDuration;
+          }
+        });
+      }
+    }
+
+    // 내용 필터 적용
+    if (contentFilter.enabled && contentFilter.content.trim()) {
+      filteredCards = filteredCards.filter(card => {
+        const content = ((card as any).content || '').toLowerCase();
+        return content.includes(contentFilter.content.toLowerCase());
+      });
+    }
+
+    // 생성일 필터 적용
+    if (createDateFilter.enabled && (createDateFilter.startDate || createDateFilter.endDate)) {
+      filteredCards = filteredCards.filter(card => {
+        const createDate = new Date((card as any).createdat);
+        const startDate = createDateFilter.startDate ? new Date(createDateFilter.startDate) : null;
+        const endDate = createDateFilter.endDate ? new Date(createDateFilter.endDate) : null;
+        
+        if (startDate && createDate < startDate) return false;
+        if (endDate && createDate > endDate) return false;
+        return true;
+      });
+    }
+
+    // 프로젝트 필터 적용
+    if (projectFilter.enabled && projectFilter.projectIds.length > 0) {
+      filteredCards = filteredCards.filter(card => {
+        return projectFilter.projectIds.includes((card as any).project_id);
+      });
+    }
+
     // 서브카드 전용 정렬 필터 적용
     if (subcardsOnlyFilter.enabled && subcardsOnlyFilter.relationTypeName && subcardsOnlyFilter.targetCardTitle) {
       const chainCardIds = findCardsInChainToTarget(subcardsOnlyFilter.targetCardTitle, subcardsOnlyFilter.relationTypeName);
@@ -1154,8 +1237,8 @@ function Home() {
 
         // 디버깅용 로그 (상위 5개 카드만)
         if (filteredCards.indexOf(a) < 5 || filteredCards.indexOf(b) < 5) {
-          const typeInfo = sortOptions.relationCount.relationTypes.length > 0 
-            ? `선택된 타입: ${sortOptions.relationCount.relationTypes.join(', ')}` 
+          const typeInfo = sortOptions.relationCount.relationTypes.length > 0
+            ? `선택된 타입: ${sortOptions.relationCount.relationTypes.join(', ')}`
             : '모든 관계타입 합산';
           console.log(`정렬 비교: "${a.title}" (${countA}) vs "${b.title}" (${countB}), order: ${sortOptions.relationCount.order}, ${typeInfo}`);
         }
@@ -1287,13 +1370,18 @@ function Home() {
         subcardsOnlyFilter,
         amountFilter,
         cardTypeFilters,
-        completionFilter
+        completionFilter,
+        activateFilter,
+        durationFilter,
+        contentFilter,
+        createDateFilter,
+        projectFilter
       };
       localStorage.setItem('forneed-filter-settings', JSON.stringify(filterSettings));
     } catch (error) {
       console.warn('필터 설정 저장 실패:', error);
     }
-  }, [sortOptions, relationFilter, dateFilter, subcardsOnlyFilter, amountFilter, cardTypeFilters, completionFilter]);
+  }, [sortOptions, relationFilter, dateFilter, subcardsOnlyFilter, amountFilter, cardTypeFilters, completionFilter, activateFilter, durationFilter, contentFilter, createDateFilter, projectFilter]);
 
   // Esc 키로 충돌 모달 닫기
   useEffect(() => {
@@ -3426,7 +3514,216 @@ function Home() {
               </div>
             </div>
 
-            {/* 7. 정렬 옵션 */}
+            {/* 7. 활성상태 필터 */}
+            <div style={{ marginBottom: 20 }}>
+              <h4 style={{ margin: '0 0 12px 0', color: '#ccc', fontSize: 16 }}>활성상태 필터</h4>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 8, color: '#fff', marginBottom: 8 }}>
+                <input
+                  type="checkbox"
+                  checked={activateFilter?.enabled || false}
+                  onChange={(e) => setActivateFilter(prev => ({ ...prev, enabled: e.target.checked }))}
+                  style={{ transform: 'scale(1.2)' }}
+                />
+                <span>활성상태 필터링 활성화</span>
+              </label>
+              {activateFilter?.enabled && (
+                <div style={{ marginLeft: 24 }}>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 8, color: '#ccc', marginBottom: 4 }}>
+                    <input
+                      type="radio"
+                      name="activateFilter"
+                      checked={activateFilter?.type === 'active-only'}
+                      onChange={() => setActivateFilter(prev => ({ ...prev, type: 'active-only' }))}
+                    />
+                    <span>활성된 카드만 조회</span>
+                  </label>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 8, color: '#ccc' }}>
+                    <input
+                      type="radio"
+                      name="activateFilter"
+                      checked={activateFilter?.type === 'inactive-only'}
+                      onChange={() => setActivateFilter(prev => ({ ...prev, type: 'inactive-only' }))}
+                    />
+                    <span>비활성된 카드만 조회</span>
+                  </label>
+                </div>
+              )}
+            </div>
+
+            {/* 8. 소요시간 필터 */}
+            <div style={{ marginBottom: 20 }}>
+              <h4 style={{ margin: '0 0 12px 0', color: '#ccc', fontSize: 16 }}>소요시간 필터</h4>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
+                  <input
+                    type="checkbox"
+                    checked={durationFilter.enabled}
+                    onChange={(e) => setDurationFilter(prev => ({ ...prev, enabled: e.target.checked }))}
+                  />
+                  <span>소요시간 필터링 활성화</span>
+                </label>
+                {durationFilter.enabled && (
+                  <div style={{ marginLeft: 24, display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <input
+                      type="number"
+                      placeholder="시간"
+                      value={durationFilter.duration}
+                      onChange={(e) => setDurationFilter(prev => ({ ...prev, duration: e.target.value }))}
+                      style={{
+                        padding: '6px 8px',
+                        background: '#333',
+                        border: '1px solid #555',
+                        color: '#fff',
+                        borderRadius: 4,
+                        width: '100px'
+                      }}
+                    />
+                    <select
+                      value={durationFilter.operator}
+                      onChange={(e) => setDurationFilter(prev => ({ ...prev, operator: e.target.value as 'gte' | 'lte' }))}
+                      style={{
+                        padding: '6px 8px',
+                        background: '#333',
+                        border: '1px solid #555',
+                        borderRadius: 4,
+                        color: '#fff'
+                      }}
+                    >
+                      <option value="gte">이상</option>
+                      <option value="lte">이하</option>
+                    </select>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* 9. 내용 필터 */}
+            <div style={{ marginBottom: 20 }}>
+              <h4 style={{ margin: '0 0 12px 0', color: '#ccc', fontSize: 16 }}>내용 필터</h4>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
+                  <input
+                    type="checkbox"
+                    checked={contentFilter.enabled}
+                    onChange={(e) => setContentFilter(prev => ({ ...prev, enabled: e.target.checked }))}
+                  />
+                  <span>내용 검색 필터링 활성화</span>
+                </label>
+                {contentFilter.enabled && (
+                  <div style={{ marginLeft: 24 }}>
+                    <input
+                      type="text"
+                      placeholder="검색할 내용"
+                      value={contentFilter.content}
+                      onChange={(e) => setContentFilter(prev => ({ ...prev, content: e.target.value }))}
+                      style={{
+                        padding: '6px 8px',
+                        background: '#333',
+                        border: '1px solid #555',
+                        color: '#fff',
+                        borderRadius: 4,
+                        width: '200px'
+                      }}
+                    />
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* 10. 생성일 필터 */}
+            <div style={{ marginBottom: 20 }}>
+              <h4 style={{ margin: '0 0 12px 0', color: '#ccc', fontSize: 16 }}>생성일 필터</h4>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
+                  <input
+                    type="checkbox"
+                    checked={createDateFilter.enabled}
+                    onChange={(e) => setCreateDateFilter(prev => ({ ...prev, enabled: e.target.checked }))}
+                  />
+                  <span>생성일 범위 필터링 활성화</span>
+                </label>
+                {createDateFilter.enabled && (
+                  <div style={{ marginLeft: 24, display: 'flex', flexDirection: 'column', gap: 8 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <span style={{ color: '#aaa', width: '60px' }}>시작일:</span>
+                      <input
+                        type="date"
+                        value={createDateFilter.startDate}
+                        onChange={(e) => setCreateDateFilter(prev => ({ ...prev, startDate: e.target.value }))}
+                        style={{
+                          padding: '6px 8px',
+                          background: '#333',
+                          border: '1px solid #555',
+                          color: '#fff',
+                          borderRadius: 4
+                        }}
+                      />
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <span style={{ color: '#aaa', width: '60px' }}>종료일:</span>
+                      <input
+                        type="date"
+                        value={createDateFilter.endDate}
+                        onChange={(e) => setCreateDateFilter(prev => ({ ...prev, endDate: e.target.value }))}
+                        style={{
+                          padding: '6px 8px',
+                          background: '#333',
+                          border: '1px solid #555',
+                          color: '#fff',
+                          borderRadius: 4
+                        }}
+                      />
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* 11. 프로젝트 필터 */}
+            <div style={{ marginBottom: 20 }}>
+              <h4 style={{ margin: '0 0 12px 0', color: '#ccc', fontSize: 16 }}>프로젝트 필터</h4>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
+                  <input
+                    type="checkbox"
+                    checked={projectFilter.enabled}
+                    onChange={(e) => setProjectFilter(prev => ({ ...prev, enabled: e.target.checked }))}
+                  />
+                  <span>프로젝트별 필터링 활성화</span>
+                </label>
+                {projectFilter.enabled && (
+                  <div style={{ marginLeft: 24 }}>
+                    <div style={{ marginBottom: 8, fontSize: 14, color: '#aaa' }}>프로젝트 선택 (복수선택 가능):</div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 4, maxHeight: 100, overflow: 'auto' }}>
+                      {projects.map((project) => (
+                        <label key={project.project_id} style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
+                          <input
+                            type="checkbox"
+                            checked={projectFilter.projectIds.includes(project.project_id)}
+                            onChange={(e) => {
+                              if (e.target.checked) {
+                                setProjectFilter(prev => ({
+                                  ...prev,
+                                  projectIds: [...prev.projectIds, project.project_id]
+                                }));
+                              } else {
+                                setProjectFilter(prev => ({
+                                  ...prev,
+                                  projectIds: prev.projectIds.filter(id => id !== project.project_id)
+                                }));
+                              }
+                            }}
+                          />
+                          <span style={{ fontSize: 13 }}>{project.project_name}</span>
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* 12. 정렬 옵션 */}
             <div style={{ marginBottom: 24 }}>
               <h4 style={{ margin: '0 0 12px 0', color: '#ccc', fontSize: 16 }}>정렬 옵션</h4>
 
@@ -3549,6 +3846,11 @@ function Home() {
                   setRelationFilter({ enabled: false, type: 'no-relations' });
                   setDateFilter({ enabled: false, type: 'has-date' });
                   setCompletionFilter({ enabled: false, type: 'completed-only' });
+                  setActivateFilter({ enabled: false, type: 'active-only' });
+                  setDurationFilter({ enabled: false, duration: '', operator: 'gte' });
+                  setContentFilter({ enabled: false, content: '' });
+                  setCreateDateFilter({ enabled: false, startDate: '', endDate: '' });
+                  setProjectFilter({ enabled: false, projectIds: [] });
                   setSubcardsOnlyFilter({ enabled: false, relationTypeName: '', targetCardTitle: '' });
                   setSubcardsDropdownVisible(false);
                   setSubcardsSelectedIndex(-1);
