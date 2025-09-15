@@ -546,22 +546,22 @@ function Projects() {
   );
 }
 
-// 설정 페이지 컴포넌트
-function Settings() {
-  const [settings, setSettings] = useState<any>(null);
+// DB 설정 컴포넌트
+function DatabaseSettings() {
+  const [dbSettings, setDbSettings] = useState<any>(null);
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState('');
 
   // 설정 로드
   useEffect(() => {
-    loadSettings();
+    loadDbSettings();
   }, []);
 
-  const loadSettings = async () => {
+  const loadDbSettings = async () => {
     try {
       const result = await window.electron.ipcRenderer.invoke('get-settings');
       if (result.success) {
-        setSettings(result.data);
+        setDbSettings(result.data);
       } else {
         setMessage('설정을 불러올 수 없습니다.');
       }
@@ -581,7 +581,7 @@ function Settings() {
         
         if (changeResult.success) {
           setMessage(changeResult.message);
-          setSettings(prev => ({ ...prev, dbPath: result.path }));
+          setDbSettings((prev: any) => ({ ...prev, dbPath: result.path }));
           
           // 재시작 확인 다이얼로그
           if (changeResult.requiresRestart) {
@@ -606,9 +606,7 @@ function Settings() {
   };
 
   return (
-    <div style={{ padding: 40, maxWidth: 800, margin: '0 auto' }}>
-      <h2 style={{ color: '#fff', marginBottom: 30 }}>⚙️ 설정</h2>
-      
+    <div style={{ marginBottom: 24 }}>
       {message && (
         <div style={{
           background: message.includes('실패') || message.includes('오류') ? '#f44336' : '#4CAF50',
@@ -622,83 +620,62 @@ function Settings() {
         </div>
       )}
 
-      {settings && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
-          {/* DB 경로 설정 */}
-          <div style={{
-            background: '#1e1e1e',
-            border: '1px solid #444',
-            borderRadius: 8,
-            padding: 24
-          }}>
-            <h3 style={{ color: '#fff', marginBottom: 16, fontSize: 18 }}>
-              🗄️ 데이터베이스 설정
-            </h3>
-            
-            <div style={{ marginBottom: 16 }}>
-              <label style={{ display: 'block', color: '#ccc', marginBottom: 8, fontSize: 14 }}>
-                현재 DB 경로:
-              </label>
-              <div style={{
-                background: '#333',
-                color: '#fff',
-                padding: '8px 12px',
-                borderRadius: 4,
-                fontSize: 13,
-                fontFamily: 'monospace',
-                wordBreak: 'break-all',
-                border: '1px solid #555'
-              }}>
-                {settings.dbPath || '경로 정보 없음'}
-              </div>
-            </div>
-
-            <button
-              onClick={handleSelectDatabasePath}
-              disabled={loading}
-              style={{
-                background: loading ? '#666' : '#4CAF50',
-                color: '#fff',
-                border: 'none',
-                padding: '10px 20px',
-                borderRadius: 6,
-                cursor: loading ? 'not-allowed' : 'pointer',
-                fontSize: 14,
-                fontWeight: 'bold'
-              }}
-            >
-              {loading ? '처리 중...' : '🔍 DB 위치 변경'}
-            </button>
-            
-            <div style={{ marginTop: 12, fontSize: 12, color: '#888' }}>
-              💡 DB 위치를 변경하면 새로운 데이터베이스 파일이 생성됩니다.<br/>
-              기존 데이터를 유지하려면 기존 DB 파일을 새 위치로 복사해주세요.
+      {dbSettings && (
+        <div style={{
+          background: '#1e1e1e',
+          border: '1px solid #444',
+          borderRadius: 8,
+          padding: 24
+        }}>
+          <h3 style={{ color: '#fff', marginBottom: 16, fontSize: 18 }}>
+            🗄️ 데이터베이스 설정
+          </h3>
+          
+          <div style={{ marginBottom: 16 }}>
+            <label style={{ display: 'block', color: '#ccc', marginBottom: 8, fontSize: 14 }}>
+              현재 DB 경로:
+            </label>
+            <div style={{
+              background: '#333',
+              color: '#fff',
+              padding: '8px 12px',
+              borderRadius: 4,
+              fontSize: 13,
+              fontFamily: 'monospace',
+              wordBreak: 'break-all',
+              border: '1px solid #555'
+            }}>
+              {dbSettings.dbPath || '경로 정보 없음'}
             </div>
           </div>
 
-          {/* 앱 정보 */}
-          <div style={{
-            background: '#1e1e1e',
-            border: '1px solid #444',
-            borderRadius: 8,
-            padding: 24
-          }}>
-            <h3 style={{ color: '#fff', marginBottom: 16, fontSize: 18 }}>
-              ℹ️ 앱 정보
-            </h3>
-            
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 8, fontSize: 14 }}>
-              <div style={{ color: '#ccc' }}>
-                <strong>버전:</strong> <span style={{ color: '#fff' }}>{settings.version}</span>
-              </div>
-              <div style={{ color: '#ccc' }}>
-                <strong>설정 파일:</strong> <span style={{ color: '#fff', fontFamily: 'monospace', fontSize: 12 }}>
-                  {process.platform === 'win32' ? '%APPDATA%\\ForNeed\\settings.json' : 
-                   process.platform === 'darwin' ? '~/Library/Application Support/ForNeed/settings.json' :
-                   '~/.config/ForNeed/settings.json'}
-                </span>
-              </div>
-            </div>
+          <button
+            onClick={handleSelectDatabasePath}
+            disabled={loading}
+            style={{
+              background: loading ? '#666' : '#4CAF50',
+              color: '#fff',
+              border: 'none',
+              padding: '10px 20px',
+              borderRadius: 6,
+              cursor: loading ? 'not-allowed' : 'pointer',
+              fontSize: 14,
+              fontWeight: 'bold'
+            }}
+          >
+            {loading ? '처리 중...' : '🔍 DB 위치 변경'}
+          </button>
+          
+          <div style={{ marginTop: 12, fontSize: 12, color: '#888' }}>
+            💡 DB 위치를 변경하면 새로운 데이터베이스 파일이 생성됩니다.<br/>
+            기존 데이터를 유지하려면 기존 DB 파일을 새 위치로 복사해주세요.
+          </div>
+
+          <div style={{ marginTop: 16, fontSize: 12, color: '#aaa' }}>
+            <strong>앱 버전:</strong> {dbSettings.version}<br/>
+            <strong>설정 파일:</strong> {process.platform === 'win32' ? '%APPDATA%\\ForNeed\\settings.json' : 
+             process.platform === 'darwin' ? '~/Library/Application Support/ForNeed/settings.json' :
+             '~/.config/ForNeed/settings.json'}
           </div>
         </div>
       )}
@@ -6900,6 +6877,9 @@ function Settings() {
       )}
 
       <h2 style={{ marginTop: 0, marginBottom: 32, color: '#fff' }}>설정</h2>
+      
+      {/* DB 설정 섹션 */}
+      <DatabaseSettings />
 
       {/* 카드 삭제 확인 설정 */}
       <div style={{

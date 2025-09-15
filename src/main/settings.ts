@@ -33,7 +33,7 @@ export function loadSettings(): AppSettings {
   } catch (error) {
     console.warn('Failed to load settings:', error);
   }
-  
+
   // 기본 설정으로 파일 생성
   saveSettings(defaultSettings);
   return defaultSettings;
@@ -52,13 +52,13 @@ export function saveSettings(settings: AppSettings): void {
 export function setDatabasePath(newPath: string): boolean {
   try {
     const settings = loadSettings();
-    
+
     // 디렉토리 확인 및 생성
     const dbDir = path.dirname(newPath);
     if (!fs.existsSync(dbDir)) {
       fs.mkdirSync(dbDir, { recursive: true });
     }
-    
+
     settings.dbPath = newPath;
     saveSettings(settings);
     return true;

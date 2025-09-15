@@ -2073,7 +2073,7 @@ ipcMain.handle('select-database-path', async () => {
     if (!result.canceled && result.filePath) {
       return { success: true, path: result.filePath };
     }
-    
+
     return { success: false, canceled: true };
   } catch (error) {
     log.error('Failed to select database path:', error);
@@ -2087,10 +2087,10 @@ ipcMain.handle('change-database-path', async (event, newPath: string) => {
     const success = setDatabasePath(newPath);
     if (success) {
       // DB 경로 변경 후 앱 재시작이 필요함을 알림
-      return { 
-        success: true, 
+      return {
+        success: true,
         message: 'DB 경로가 변경되었습니다. 변경사항을 적용하려면 앱을 재시작해주세요.',
-        requiresRestart: true 
+        requiresRestart: true
       };
     } else {
       return { success: false, error: 'Failed to change database path' };

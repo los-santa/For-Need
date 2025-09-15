@@ -358,9 +358,9 @@ db.exec(`
   BEGIN
     SELECT CASE
       WHEN (
-        SELECT ct.cardtype_name 
-        FROM CARDS c 
-        JOIN CARDTYPES ct ON c.cardtype = ct.cardtype_id 
+        SELECT ct.cardtype_name
+        FROM CARDS c
+        JOIN CARDTYPES ct ON c.cardtype = ct.cardtype_id
         WHERE c.id = NEW.card_id
       ) <> 'habit'
       THEN RAISE(ABORT, 'Card must have cardtype habit')
