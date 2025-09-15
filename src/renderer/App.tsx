@@ -1132,7 +1132,7 @@ function Home() {
         order: sortOptions.relationCount.order,
         relationTypes: sortOptions.relationCount.relationTypes
       });
-      
+
       sortedCards.sort((a, b) => {
         let countA = 0, countB = 0;
 
@@ -1145,16 +1145,18 @@ function Home() {
             countB += typeCountB;
           });
         } else {
-          // 관계타입이 선택되지 않은 경우 전체 관계 수 사용
-          countA = getRelationCount(a.id);
-          countB = getRelationCount(b.id);
+          // 관계타입이 선택되지 않은 경우 모든 관계타입의 관계 수를 합산
+          relationTypes.forEach(relType => {
+            countA += getRelationCountByType(a.id, relType.typename);
+            countB += getRelationCountByType(b.id, relType.typename);
+          });
         }
 
         // 디버깅용 로그 (상위 5개 카드만)
         if (filteredCards.indexOf(a) < 5 || filteredCards.indexOf(b) < 5) {
           const typeInfo = sortOptions.relationCount.relationTypes.length > 0 
             ? `선택된 타입: ${sortOptions.relationCount.relationTypes.join(', ')}` 
-            : '전체 관계';
+            : '모든 관계타입 합산';
           console.log(`정렬 비교: "${a.title}" (${countA}) vs "${b.title}" (${countB}), order: ${sortOptions.relationCount.order}, ${typeInfo}`);
         }
 
@@ -3464,7 +3466,7 @@ function Home() {
                       </select>
                     </div>
                     <div style={{ marginBottom: 8, fontSize: 14, color: '#aaa' }}>
-                      기준 관계타입 (복수선택 가능, 선택하지 않으면 전체 관계 수로 정렬):
+                      기준 관계타입 (복수선택 가능, 선택하지 않으면 모든 관계타입 합산으로 정렬):
                     </div>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 4, maxHeight: 100, overflow: 'auto' }}>
                       {relationTypes.map((relType) => (
