@@ -753,6 +753,9 @@ function Home() {
     const updatedPresets = [...filterPresets, newPreset];
     setFilterPresets(updatedPresets);
     localStorage.setItem('forneed-filter-presets', JSON.stringify(updatedPresets));
+    
+    // 저장된 프리셋으로 탭 이동 (새로 저장된 탭의 인덱스는 updatedPresets.length - 1)
+    setCurrentPresetTab(updatedPresets.length - 1);
   };
 
   // 필터 프리셋 로드
@@ -777,7 +780,7 @@ function Home() {
     const updatedPresets = filterPresets.filter(preset => preset.id !== presetId);
     setFilterPresets(updatedPresets);
     localStorage.setItem('forneed-filter-presets', JSON.stringify(updatedPresets));
-    
+
     // 현재 탭이 삭제된 경우 첫 번째 탭으로 이동
     if (currentPresetTab >= updatedPresets.length) {
       setCurrentPresetTab(0);
@@ -3284,15 +3287,12 @@ function Home() {
                 >
                   기본 필터
                 </button>
-                
+
                 {/* 저장된 프리셋 탭들 */}
                 {filterPresets.map((preset, index) => (
                   <div key={preset.id} style={{ display: 'flex', alignItems: 'center' }}>
                     <button
-                      onClick={() => {
-                        setCurrentPresetTab(index);
-                        loadFilterPreset(preset);
-                      }}
+                      onClick={() => setCurrentPresetTab(index)}
                       style={{
                         background: currentPresetTab === index ? '#333' : 'transparent',
                         border: 'none',
@@ -3304,6 +3304,24 @@ function Home() {
                     >
                       {preset.name}
                     </button>
+                    {currentPresetTab === index && (
+                      <button
+                        onClick={() => loadFilterPreset(preset)}
+                        style={{
+                          background: '#4CAF50',
+                          border: 'none',
+                          color: '#fff',
+                          fontSize: 12,
+                          cursor: 'pointer',
+                          padding: '2px 6px',
+                          marginLeft: 4,
+                          borderRadius: 3
+                        }}
+                        title="이 프리셋 적용"
+                      >
+                        로드
+                      </button>
+                    )}
                     <button
                       onClick={() => deleteFilterPreset(preset.id)}
                       style={{
@@ -4066,7 +4084,7 @@ function Home() {
             onClick={(e) => e.stopPropagation()}
           >
             <h3 style={{ margin: '0 0 16px 0', color: '#fff' }}>필터 프리셋 저장</h3>
-            
+
             <div style={{ marginBottom: 16 }}>
               <label style={{ display: 'block', marginBottom: 8, color: '#ccc' }}>
                 프리셋 이름:
