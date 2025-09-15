@@ -1127,7 +1127,7 @@ function Home() {
     let sortedCards = [...filteredCards];
 
     // 보유관계 갯수 정렬이 활성화된 경우
-    if (sortOptions.relationCount.enabled && sortOptions.relationCount.relationTypes.length > 0) {
+    if (sortOptions.relationCount.enabled) {
       console.log('정렬 시작:', {
         order: sortOptions.relationCount.order,
         relationTypes: sortOptions.relationCount.relationTypes
@@ -1136,17 +1136,26 @@ function Home() {
       sortedCards.sort((a, b) => {
         let countA = 0, countB = 0;
 
-        // 선택된 관계타입들의 관계 수를 합산
-        sortOptions.relationCount.relationTypes.forEach(typeName => {
-          const typeCountA = getRelationCountByType(a.id, typeName);
-          const typeCountB = getRelationCountByType(b.id, typeName);
-          countA += typeCountA;
-          countB += typeCountB;
-        });
+        if (sortOptions.relationCount.relationTypes.length > 0) {
+          // 선택된 관계타입들의 관계 수를 합산
+          sortOptions.relationCount.relationTypes.forEach(typeName => {
+            const typeCountA = getRelationCountByType(a.id, typeName);
+            const typeCountB = getRelationCountByType(b.id, typeName);
+            countA += typeCountA;
+            countB += typeCountB;
+          });
+        } else {
+          // 관계타입이 선택되지 않은 경우 전체 관계 수 사용
+          countA = getRelationCount(a.id);
+          countB = getRelationCount(b.id);
+        }
 
         // 디버깅용 로그 (상위 5개 카드만)
         if (filteredCards.indexOf(a) < 5 || filteredCards.indexOf(b) < 5) {
-          console.log(`정렬 비교: "${a.title}" (${countA}) vs "${b.title}" (${countB}), order: ${sortOptions.relationCount.order}`);
+          const typeInfo = sortOptions.relationCount.relationTypes.length > 0 
+            ? `선택된 타입: ${sortOptions.relationCount.relationTypes.join(', ')}` 
+            : '전체 관계';
+          console.log(`정렬 비교: "${a.title}" (${countA}) vs "${b.title}" (${countB}), order: ${sortOptions.relationCount.order}, ${typeInfo}`);
         }
 
         if (sortOptions.relationCount.order === 'desc') {
@@ -3454,7 +3463,9 @@ function Home() {
                         <option value="asc">적은 것부터 (오름차순)</option>
                       </select>
                     </div>
-                    <div style={{ marginBottom: 8, fontSize: 14, color: '#aaa' }}>기준 관계타입 (복수선택 가능):</div>
+                    <div style={{ marginBottom: 8, fontSize: 14, color: '#aaa' }}>
+                      기준 관계타입 (복수선택 가능, 선택하지 않으면 전체 관계 수로 정렬):
+                    </div>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 4, maxHeight: 100, overflow: 'auto' }}>
                       {relationTypes.map((relType) => (
                         <label key={relType.relationtype_id} style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
