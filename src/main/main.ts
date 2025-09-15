@@ -2041,6 +2041,73 @@ ipcMain.handle('get-project-cards', async (event, projectId: string) => {
 });
 
 // =========================
+// 설정 관리 기능
+// =========================
+
+import { dialog } from 'electron';
+import { loadSettings, saveSettings, setDatabasePath, getDatabasePath } from './settings';
+
+// 현재 설정 가져오기
+ipcMain.handle('get-settings', async () => {
+  try {
+    const settings = loadSettings();
+    return { success: true, data: settings };
+  } catch (error) {
+    log.error('Failed to get settings:', error);
+    return { success: false, error: 'Failed to get settings' };
+  }
+});
+
+// DB 경로 선택 다이얼로그
+ipcMain.handle('select-database-path', async () => {
+  try {
+    const result = await dialog.showSaveDialog({
+      title: 'DB 저장 위치 선택',
+      defaultPath: 'database.db',
+      filters: [
+        { name: 'Database Files', extensions: ['db'] },
+        { name: 'All Files', extensions: ['*'] }
+      ]
+    });
+
+    if (!result.canceled && result.filePath) {
+      return { success: true, path: result.filePath };
+    }
+    
+    return { success: false, canceled: true };
+  } catch (error) {
+    log.error('Failed to select database path:', error);
+    return { success: false, error: 'Failed to select database path' };
+  }
+});
+
+// DB 경로 변경 및 앱 재시작
+ipcMain.handle('change-database-path', async (event, newPath: string) => {
+  try {
+    const success = setDatabasePath(newPath);
+    if (success) {
+      // DB 경로 변경 후 앱 재시작이 필요함을 알림
+      return { 
+        success: true, 
+        message: 'DB 경로가 변경되었습니다. 변경사항을 적용하려면 앱을 재시작해주세요.',
+        requiresRestart: true 
+      };
+    } else {
+      return { success: false, error: 'Failed to change database path' };
+    }
+  } catch (error) {
+    log.error('Failed to change database path:', error);
+    return { success: false, error: 'Failed to change database path' };
+  }
+});
+
+// 앱 재시작
+ipcMain.handle('restart-app', async () => {
+  app.relaunch();
+  app.exit();
+});
+
+// =========================
 // 카드명 중복방지 기능 추가
 // =========================
 

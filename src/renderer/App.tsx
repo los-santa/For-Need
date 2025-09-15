@@ -546,6 +546,166 @@ function Projects() {
   );
 }
 
+// 설정 페이지 컴포넌트
+function Settings() {
+  const [settings, setSettings] = useState<any>(null);
+  const [loading, setLoading] = useState(false);
+  const [message, setMessage] = useState('');
+
+  // 설정 로드
+  useEffect(() => {
+    loadSettings();
+  }, []);
+
+  const loadSettings = async () => {
+    try {
+      const result = await window.electron.ipcRenderer.invoke('get-settings');
+      if (result.success) {
+        setSettings(result.data);
+      } else {
+        setMessage('설정을 불러올 수 없습니다.');
+      }
+    } catch (error) {
+      console.error('Failed to load settings:', error);
+      setMessage('설정을 불러오는 중 오류가 발생했습니다.');
+    }
+  };
+
+  const handleSelectDatabasePath = async () => {
+    try {
+      setLoading(true);
+      const result = await window.electron.ipcRenderer.invoke('select-database-path');
+      
+      if (result.success && result.path) {
+        const changeResult = await window.electron.ipcRenderer.invoke('change-database-path', result.path);
+        
+        if (changeResult.success) {
+          setMessage(changeResult.message);
+          setSettings(prev => ({ ...prev, dbPath: result.path }));
+          
+          // 재시작 확인 다이얼로그
+          if (changeResult.requiresRestart) {
+            setTimeout(() => {
+              if (window.confirm('변경사항을 적용하려면 앱을 재시작해야 합니다. 지금 재시작하시겠습니까?')) {
+                window.electron.ipcRenderer.invoke('restart-app');
+              }
+            }, 1000);
+          }
+        } else {
+          setMessage('DB 경로 변경에 실패했습니다: ' + changeResult.error);
+        }
+      } else if (!result.canceled) {
+        setMessage('DB 경로 선택에 실패했습니다.');
+      }
+    } catch (error) {
+      console.error('Failed to select database path:', error);
+      setMessage('DB 경로 선택 중 오류가 발생했습니다.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div style={{ padding: 40, maxWidth: 800, margin: '0 auto' }}>
+      <h2 style={{ color: '#fff', marginBottom: 30 }}>⚙️ 설정</h2>
+      
+      {message && (
+        <div style={{
+          background: message.includes('실패') || message.includes('오류') ? '#f44336' : '#4CAF50',
+          color: '#fff',
+          padding: '12px 16px',
+          borderRadius: 8,
+          marginBottom: 20,
+          fontSize: 14
+        }}>
+          {message}
+        </div>
+      )}
+
+      {settings && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
+          {/* DB 경로 설정 */}
+          <div style={{
+            background: '#1e1e1e',
+            border: '1px solid #444',
+            borderRadius: 8,
+            padding: 24
+          }}>
+            <h3 style={{ color: '#fff', marginBottom: 16, fontSize: 18 }}>
+              🗄️ 데이터베이스 설정
+            </h3>
+            
+            <div style={{ marginBottom: 16 }}>
+              <label style={{ display: 'block', color: '#ccc', marginBottom: 8, fontSize: 14 }}>
+                현재 DB 경로:
+              </label>
+              <div style={{
+                background: '#333',
+                color: '#fff',
+                padding: '8px 12px',
+                borderRadius: 4,
+                fontSize: 13,
+                fontFamily: 'monospace',
+                wordBreak: 'break-all',
+                border: '1px solid #555'
+              }}>
+                {settings.dbPath || '경로 정보 없음'}
+              </div>
+            </div>
+
+            <button
+              onClick={handleSelectDatabasePath}
+              disabled={loading}
+              style={{
+                background: loading ? '#666' : '#4CAF50',
+                color: '#fff',
+                border: 'none',
+                padding: '10px 20px',
+                borderRadius: 6,
+                cursor: loading ? 'not-allowed' : 'pointer',
+                fontSize: 14,
+                fontWeight: 'bold'
+              }}
+            >
+              {loading ? '처리 중...' : '🔍 DB 위치 변경'}
+            </button>
+            
+            <div style={{ marginTop: 12, fontSize: 12, color: '#888' }}>
+              💡 DB 위치를 변경하면 새로운 데이터베이스 파일이 생성됩니다.<br/>
+              기존 데이터를 유지하려면 기존 DB 파일을 새 위치로 복사해주세요.
+            </div>
+          </div>
+
+          {/* 앱 정보 */}
+          <div style={{
+            background: '#1e1e1e',
+            border: '1px solid #444',
+            borderRadius: 8,
+            padding: 24
+          }}>
+            <h3 style={{ color: '#fff', marginBottom: 16, fontSize: 18 }}>
+              ℹ️ 앱 정보
+            </h3>
+            
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8, fontSize: 14 }}>
+              <div style={{ color: '#ccc' }}>
+                <strong>버전:</strong> <span style={{ color: '#fff' }}>{settings.version}</span>
+              </div>
+              <div style={{ color: '#ccc' }}>
+                <strong>설정 파일:</strong> <span style={{ color: '#fff', fontFamily: 'monospace', fontSize: 12 }}>
+                  {process.platform === 'win32' ? '%APPDATA%\\ForNeed\\settings.json' : 
+                   process.platform === 'darwin' ? '~/Library/Application Support/ForNeed/settings.json' :
+                   '~/.config/ForNeed/settings.json'}
+                </span>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // 빈 페이지 컴포넌트들
 function Home() {
   const [cards, setCards] = useState<{ id: string; title: string; cardtype?: string | null }[]>([]);
@@ -2225,14 +2385,14 @@ function Home() {
             // 필터링 시스템의 보유관계순 설정을 사용
             let relationCount = 0;
             let displayText = '';
-            
+
             if (sortOptions.relationCount.enabled) {
               if (sortOptions.relationCount.relationTypes.length > 0) {
                 // 선택된 관계타입들의 합계
                 sortOptions.relationCount.relationTypes.forEach(typeName => {
                   relationCount += getRelationCountByType(c.id, typeName);
                 });
-                displayText = sortOptions.relationCount.relationTypes.length === 1 
+                displayText = sortOptions.relationCount.relationTypes.length === 1
                   ? `${sortOptions.relationCount.relationTypes[0]} ${relationCount}개`
                   : `선택타입 ${relationCount}개`;
               } else {
@@ -2245,7 +2405,7 @@ function Home() {
               relationCount = getRelationCount(c.id);
               displayText = `관계 ${relationCount}개`;
             }
-            
+
             return (
             <li
               key={c.id}
@@ -6164,7 +6324,7 @@ function Visualization() {
                     🔥 해야할 일 ({getSortedCards().filter(c => !c.complete).length})
                     <span style={{ fontSize: 12, fontWeight: 'normal', color: '#666', marginLeft: 8 }}>
                       {sortOptions.relationCount.enabled ? (
-                        sortOptions.relationCount.relationTypes.length > 0 
+                        sortOptions.relationCount.relationTypes.length > 0
                           ? `${sortOptions.relationCount.relationTypes.join(', ')}순`
                           : '전체관계순'
                       ) : '기본순'}
@@ -6173,7 +6333,7 @@ function Visualization() {
                   {getSortedCards().filter(c => !c.complete).map(card => {
                     // 필터링 시스템의 보유관계순 설정을 사용
                     let relationCount = 0;
-                    
+
                     if (sortOptions.relationCount.enabled) {
                       if (sortOptions.relationCount.relationTypes.length > 0) {
                         // 선택된 관계타입들의 합계
@@ -6230,7 +6390,7 @@ function Visualization() {
                     {getSortedCards().filter(c => c.complete).map(card => {
                       // 필터링 시스템의 보유관계순 설정을 사용
                       let relationCount = 0;
-                      
+
                       if (sortOptions.relationCount.enabled) {
                         if (sortOptions.relationCount.relationTypes.length > 0) {
                           // 선택된 관계타입들의 합계

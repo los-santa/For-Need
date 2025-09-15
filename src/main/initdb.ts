@@ -2,20 +2,20 @@ import Database from 'better-sqlite3';
 import { app } from 'electron';
 import path from 'path';
 import fs from 'fs';
+import { getDatabasePath } from './settings';
 
-// 홈 디렉토리에 ForNeed 폴더 생성하여 데이터베이스 저장
-const homeDir = app.getPath('home');
-const forNeedDir = path.join(homeDir, '.forneed');
-const dbPath = path.join(forNeedDir, 'database.db');
+// 설정에서 DB 경로 가져오기
+const dbPath = getDatabasePath();
+const dbDir = path.dirname(dbPath);
 
 // 디렉토리 존재 확인 및 생성
-if (!fs.existsSync(forNeedDir)) {
-  fs.mkdirSync(forNeedDir, { recursive: true });
+if (!fs.existsSync(dbDir)) {
+  fs.mkdirSync(dbDir, { recursive: true });
 }
 
 console.log('Database path:', dbPath);
-console.log('ForNeed dir:', forNeedDir);
-console.log('Directory exists:', fs.existsSync(forNeedDir));
+console.log('Database dir:', dbDir);
+console.log('Directory exists:', fs.existsSync(dbDir));
 
 const db = new Database(dbPath);
 
