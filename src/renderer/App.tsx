@@ -728,6 +728,7 @@ function Home() {
   const [currentPresetTab, setCurrentPresetTab] = useState(-1); // 현재 선택된 탭 (-1: 기본 필터)
   const [showPresetModal, setShowPresetModal] = useState(false);
   const [presetName, setPresetName] = useState('');
+  const [saveSuccessMessage, setSaveSuccessMessage] = useState('');
 
   // 필터 프리셋 저장
   const saveFilterPreset = (name: string) => {
@@ -754,8 +755,10 @@ function Home() {
     setFilterPresets(updatedPresets);
     localStorage.setItem('forneed-filter-presets', JSON.stringify(updatedPresets));
     
-    // 저장된 프리셋으로 탭 이동 (새로 저장된 탭의 인덱스는 updatedPresets.length - 1)
-    setCurrentPresetTab(updatedPresets.length - 1);
+    // 저장 후에도 기본 필터 탭에 그대로 유지 (탭 이동하지 않음)
+    // 성공 메시지 표시
+    setSaveSuccessMessage(`"${name}" 프리셋이 저장되었습니다!`);
+    setTimeout(() => setSaveSuccessMessage(''), 3000); // 3초 후 메시지 사라짐
   };
 
   // 필터 프리셋 로드
@@ -3254,21 +3257,37 @@ function Home() {
                 >
                   저장
                 </button>
-              <button
-                onClick={() => setShowFilterModal(false)}
-                style={{
-                  background: 'none',
-                  border: 'none',
-                  color: '#888',
-                  fontSize: 24,
-                  cursor: 'pointer',
-                  padding: 0
-                }}
-              >
-                ×
-              </button>
+                <button
+                  onClick={() => setShowFilterModal(false)}
+                  style={{
+                    background: 'none',
+                    border: 'none',
+                    color: '#888',
+                    fontSize: 24,
+                    cursor: 'pointer',
+                    padding: 0
+                  }}
+                >
+                  ×
+                </button>
               </div>
             </div>
+
+            {/* 저장 성공 메시지 */}
+            {saveSuccessMessage && (
+              <div style={{
+                background: '#4CAF50',
+                color: '#fff',
+                padding: '8px 12px',
+                borderRadius: 4,
+                marginBottom: 16,
+                textAlign: 'center',
+                fontSize: 14,
+                animation: 'fadeIn 0.3s ease-in'
+              }}>
+                {saveSuccessMessage}
+              </div>
+            )}
 
             {/* 탭 헤더 */}
             <div style={{ marginBottom: 20, borderBottom: '1px solid #444' }}>
