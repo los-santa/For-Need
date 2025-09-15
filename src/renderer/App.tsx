@@ -713,6 +713,77 @@ function Home() {
   // 카드 검색 상태
   const [cardSearchTerm, setCardSearchTerm] = useState('');
 
+  // 필터 프리셋 관리
+  const loadFilterPresets = () => {
+    try {
+      const saved = localStorage.getItem('forneed-filter-presets');
+      return saved ? JSON.parse(saved) : [];
+    } catch (error) {
+      console.warn('필터 프리셋 로드 실패:', error);
+      return [];
+    }
+  };
+
+  const [filterPresets, setFilterPresets] = useState<any[]>(loadFilterPresets());
+  const [currentPresetTab, setCurrentPresetTab] = useState(-1); // 현재 선택된 탭 (-1: 기본 필터)
+  const [showPresetModal, setShowPresetModal] = useState(false);
+  const [presetName, setPresetName] = useState('');
+
+  // 필터 프리셋 저장
+  const saveFilterPreset = (name: string) => {
+    const newPreset = {
+      id: Date.now(),
+      name,
+      filters: {
+        sortOptions,
+        relationFilter,
+        dateFilter,
+        subcardsOnlyFilter,
+        amountFilter,
+        cardTypeFilters,
+        completionFilter,
+        activateFilter,
+        durationFilter,
+        contentFilter,
+        createDateFilter,
+        projectFilter
+      }
+    };
+    
+    const updatedPresets = [...filterPresets, newPreset];
+    setFilterPresets(updatedPresets);
+    localStorage.setItem('forneed-filter-presets', JSON.stringify(updatedPresets));
+  };
+
+  // 필터 프리셋 로드
+  const loadFilterPreset = (preset: any) => {
+    const filters = preset.filters;
+    setSortOptions(filters.sortOptions || { relationCount: { enabled: false, relationTypes: [], order: 'desc' }, amount: { enabled: false, order: 'desc' } });
+    setRelationFilter(filters.relationFilter || { enabled: false, type: 'no-relations' });
+    setDateFilter(filters.dateFilter || { enabled: false, type: 'has-date' });
+    setSubcardsOnlyFilter(filters.subcardsOnlyFilter || { enabled: false, relationTypeName: '', targetCardTitle: '' });
+    setAmountFilter(filters.amountFilter || { enabled: false, amount: '', operator: 'gte' });
+    setCardTypeFilters(filters.cardTypeFilters || []);
+    setCompletionFilter(filters.completionFilter || { enabled: false, type: 'completed-only' });
+    setActivateFilter(filters.activateFilter || { enabled: false, type: 'active-only' });
+    setDurationFilter(filters.durationFilter || { enabled: false, duration: '', operator: 'gte' });
+    setContentFilter(filters.contentFilter || { enabled: false, content: '' });
+    setCreateDateFilter(filters.createDateFilter || { enabled: false, startDate: '', endDate: '' });
+    setProjectFilter(filters.projectFilter || { enabled: false, projectIds: [] });
+  };
+
+  // 필터 프리셋 삭제
+  const deleteFilterPreset = (presetId: number) => {
+    const updatedPresets = filterPresets.filter(preset => preset.id !== presetId);
+    setFilterPresets(updatedPresets);
+    localStorage.setItem('forneed-filter-presets', JSON.stringify(updatedPresets));
+    
+    // 현재 탭이 삭제된 경우 첫 번째 탭으로 이동
+    if (currentPresetTab >= updatedPresets.length) {
+      setCurrentPresetTab(0);
+    }
+  };
+
   // 별칭 관련 상태
   const [aliases, setAliases] = useState<any[]>([]);
   const [cardAliases, setCardAliases] = useState<any[]>([]);
@@ -1173,7 +1244,7 @@ function Home() {
         const createDate = new Date((card as any).createdat);
         const startDate = createDateFilter.startDate ? new Date(createDateFilter.startDate) : null;
         const endDate = createDateFilter.endDate ? new Date(createDateFilter.endDate) : null;
-        
+
         if (startDate && createDate < startDate) return false;
         if (endDate && createDate > endDate) return false;
         return true;
@@ -1220,8 +1291,8 @@ function Home() {
         let countA = 0, countB = 0;
 
         if (sortOptions.relationCount.relationTypes.length > 0) {
-          // 선택된 관계타입들의 관계 수를 합산
-          sortOptions.relationCount.relationTypes.forEach(typeName => {
+        // 선택된 관계타입들의 관계 수를 합산
+        sortOptions.relationCount.relationTypes.forEach(typeName => {
             const typeCountA = getRelationCountByType(a.id, typeName);
             const typeCountB = getRelationCountByType(b.id, typeName);
             countA += typeCountA;
@@ -3165,6 +3236,21 @@ function Home() {
           >
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
               <h3 style={{ margin: 0, color: '#fff', fontSize: 18 }}>필터링 및 정렬 옵션</h3>
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                <button
+                  onClick={() => setShowPresetModal(true)}
+                  style={{
+                    background: '#4CAF50',
+                    border: 'none',
+                    color: '#fff',
+                    fontSize: 12,
+                    cursor: 'pointer',
+                    padding: '4px 8px',
+                    borderRadius: 4
+                  }}
+                >
+                  저장
+                </button>
               <button
                 onClick={() => setShowFilterModal(false)}
                 style={{
@@ -3178,6 +3264,64 @@ function Home() {
               >
                 ×
               </button>
+              </div>
+            </div>
+
+            {/* 탭 헤더 */}
+            <div style={{ marginBottom: 20, borderBottom: '1px solid #444' }}>
+              <div style={{ display: 'flex', gap: 4 }}>
+                {/* 기본 필터 탭 */}
+                <button
+                  onClick={() => setCurrentPresetTab(-1)}
+                  style={{
+                    background: currentPresetTab === -1 ? '#333' : 'transparent',
+                    border: 'none',
+                    color: currentPresetTab === -1 ? '#fff' : '#aaa',
+                    padding: '8px 16px',
+                    cursor: 'pointer',
+                    borderBottom: currentPresetTab === -1 ? '2px solid #4CAF50' : 'none'
+                  }}
+                >
+                  기본 필터
+                </button>
+                
+                {/* 저장된 프리셋 탭들 */}
+                {filterPresets.map((preset, index) => (
+                  <div key={preset.id} style={{ display: 'flex', alignItems: 'center' }}>
+                    <button
+                      onClick={() => {
+                        setCurrentPresetTab(index);
+                        loadFilterPreset(preset);
+                      }}
+                      style={{
+                        background: currentPresetTab === index ? '#333' : 'transparent',
+                        border: 'none',
+                        color: currentPresetTab === index ? '#fff' : '#aaa',
+                        padding: '8px 16px',
+                        cursor: 'pointer',
+                        borderBottom: currentPresetTab === index ? '2px solid #4CAF50' : 'none'
+                      }}
+                    >
+                      {preset.name}
+                    </button>
+                    <button
+                      onClick={() => deleteFilterPreset(preset.id)}
+                      style={{
+                        background: 'none',
+                        border: 'none',
+                        color: '#f44336',
+                        fontSize: 12,
+                        cursor: 'pointer',
+                        padding: '2px 4px',
+                        marginLeft: 4
+                      }}
+                      title="삭제"
+                    >
+                      ×
+                    </button>
+                  </div>
+                ))}
+              </div>
             </div>
 
 
@@ -3883,6 +4027,114 @@ function Home() {
                 }}
               >
                 적용
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 필터 프리셋 저장 모달 */}
+      {showPresetModal && (
+        <div
+          style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            width: '100%',
+            height: '100%',
+            background: 'rgba(0,0,0,0.8)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 3000,
+          }}
+          onClick={() => {
+            setShowPresetModal(false);
+            setPresetName('');
+          }}
+        >
+          <div
+            style={{
+              background: '#1e1e1e',
+              border: '1px solid #444',
+              borderRadius: 8,
+              padding: 24,
+              width: '90%',
+              maxWidth: 400,
+              color: '#fff'
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 style={{ margin: '0 0 16px 0', color: '#fff' }}>필터 프리셋 저장</h3>
+            
+            <div style={{ marginBottom: 16 }}>
+              <label style={{ display: 'block', marginBottom: 8, color: '#ccc' }}>
+                프리셋 이름:
+              </label>
+              <input
+                type="text"
+                value={presetName}
+                onChange={(e) => setPresetName(e.target.value)}
+                placeholder="프리셋 이름을 입력하세요"
+                style={{
+                  width: '100%',
+                  padding: '8px 12px',
+                  background: '#333',
+                  border: '1px solid #555',
+                  borderRadius: 4,
+                  color: '#fff',
+                  fontSize: 14
+                }}
+                autoFocus
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && presetName.trim()) {
+                    saveFilterPreset(presetName.trim());
+                    setShowPresetModal(false);
+                    setPresetName('');
+                  } else if (e.key === 'Escape') {
+                    setShowPresetModal(false);
+                    setPresetName('');
+                  }
+                }}
+              />
+            </div>
+
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+              <button
+                onClick={() => {
+                  setShowPresetModal(false);
+                  setPresetName('');
+                }}
+                style={{
+                  padding: '8px 16px',
+                  background: '#555',
+                  border: 'none',
+                  borderRadius: 4,
+                  color: '#fff',
+                  cursor: 'pointer'
+                }}
+              >
+                취소
+              </button>
+              <button
+                onClick={() => {
+                  if (presetName.trim()) {
+                    saveFilterPreset(presetName.trim());
+                    setShowPresetModal(false);
+                    setPresetName('');
+                  }
+                }}
+                disabled={!presetName.trim()}
+                style={{
+                  padding: '8px 16px',
+                  background: presetName.trim() ? '#4CAF50' : '#666',
+                  border: 'none',
+                  borderRadius: 4,
+                  color: '#fff',
+                  cursor: presetName.trim() ? 'pointer' : 'not-allowed'
+                }}
+              >
+                저장
               </button>
             </div>
           </div>

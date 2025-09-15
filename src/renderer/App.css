@@ -94,6 +94,17 @@ a:hover {
   flex: 1 0 150px;
 }
 
+/* 날짜 입력 필드 스타일 */
+.editor-input[type="date"] {
+  background: #ffffff;
+  color: #000000;
+}
+
+.editor-input[type="date"]::-webkit-calendar-picker-indicator {
+  background-color: #000000;
+  color: #000000;
+}
+
 .editor-button {
   background-color: #3a3a3a;
   color: #fff;
