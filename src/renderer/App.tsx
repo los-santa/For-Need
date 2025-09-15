@@ -956,9 +956,12 @@ function Home() {
 
   // 특정 관계타입의 관계 수 계산 (현재관계창과 동일: source인 관계만)
   const getRelationCountByType = (cardId: string, relationTypeName: string) => {
+    const relationType = relationTypes.find(rt => rt.typename === relationTypeName);
+    if (!relationType) return 0;
+
     return allRelations.filter(rel =>
       rel.source === cardId &&
-      rel.typename === relationTypeName
+      rel.relationtype_id === relationType.relationtype_id
     ).length;
   };
 
@@ -1125,14 +1128,26 @@ function Home() {
 
     // 보유관계 갯수 정렬이 활성화된 경우
     if (sortOptions.relationCount.enabled && sortOptions.relationCount.relationTypes.length > 0) {
+      console.log('정렬 시작:', {
+        order: sortOptions.relationCount.order,
+        relationTypes: sortOptions.relationCount.relationTypes
+      });
+      
       sortedCards.sort((a, b) => {
         let countA = 0, countB = 0;
 
         // 선택된 관계타입들의 관계 수를 합산
         sortOptions.relationCount.relationTypes.forEach(typeName => {
-          countA += getRelationCountByType(a.id, typeName);
-          countB += getRelationCountByType(b.id, typeName);
+          const typeCountA = getRelationCountByType(a.id, typeName);
+          const typeCountB = getRelationCountByType(b.id, typeName);
+          countA += typeCountA;
+          countB += typeCountB;
         });
+
+        // 디버깅용 로그 (상위 5개 카드만)
+        if (filteredCards.indexOf(a) < 5 || filteredCards.indexOf(b) < 5) {
+          console.log(`정렬 비교: "${a.title}" (${countA}) vs "${b.title}" (${countB}), order: ${sortOptions.relationCount.order}`);
+        }
 
         if (sortOptions.relationCount.order === 'desc') {
           return countB - countA; // 내림차순 (많은 것부터)
