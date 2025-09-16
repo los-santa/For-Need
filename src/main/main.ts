@@ -320,11 +320,38 @@ interface Card {
   id: string;
   title: string;
   cardtype: string | null;
+  complete?: number;
+  activate?: number;
+  duration?: number;
+  content?: string;
+  startdate?: string;
+  enddate?: string;
+  es?: string;
+  ls?: string;
+  price?: number;
+  createdat?: string;
 }
 
 ipcMain.handle('get-cards', async () => {
   try {
-    const cards = db.prepare('SELECT id, title, cardtype FROM CARDS WHERE deleted_at IS NULL').all() as Card[];
+    const cards = db.prepare(`
+      SELECT 
+        id, 
+        title, 
+        cardtype, 
+        complete,
+        activate,
+        duration,
+        content,
+        startdate,
+        enddate,
+        es,
+        ls,
+        price,
+        createdat
+      FROM CARDS 
+      WHERE deleted_at IS NULL
+    `).all() as Card[];
     return { success: true, data: cards };
   } catch (error) {
     log.error('Failed to get cards:', error);

@@ -575,14 +575,14 @@ function DatabaseSettings() {
     try {
       setLoading(true);
       const result = await window.electron.ipcRenderer.invoke('select-database-path');
-      
+
       if (result.success && result.path) {
         const changeResult = await window.electron.ipcRenderer.invoke('change-database-path', result.path);
-        
+
         if (changeResult.success) {
           setMessage(changeResult.message);
           setDbSettings((prev: any) => ({ ...prev, dbPath: result.path }));
-          
+
           // 재시작 확인 다이얼로그
           if (changeResult.requiresRestart) {
             setTimeout(() => {
@@ -630,7 +630,7 @@ function DatabaseSettings() {
           <h3 style={{ color: '#fff', marginBottom: 16, fontSize: 18 }}>
             🗄️ 데이터베이스 설정
           </h3>
-          
+
           <div style={{ marginBottom: 16 }}>
             <label style={{ display: 'block', color: '#ccc', marginBottom: 8, fontSize: 14 }}>
               현재 DB 경로:
@@ -665,7 +665,7 @@ function DatabaseSettings() {
           >
             {loading ? '처리 중...' : '🔍 DB 위치 변경'}
           </button>
-          
+
           <div style={{ marginTop: 12, fontSize: 12, color: '#888' }}>
             💡 DB 위치를 변경하면 새로운 데이터베이스 파일이 생성됩니다.<br/>
             기존 데이터를 유지하려면 기존 DB 파일을 새 위치로 복사해주세요.
@@ -673,7 +673,7 @@ function DatabaseSettings() {
 
           <div style={{ marginTop: 16, fontSize: 12, color: '#aaa' }}>
             <strong>앱 버전:</strong> {dbSettings.version}<br/>
-            <strong>설정 파일:</strong> {process.platform === 'win32' ? '%APPDATA%\\ForNeed\\settings.json' : 
+            <strong>설정 파일:</strong> {process.platform === 'win32' ? '%APPDATA%\\ForNeed\\settings.json' :
              process.platform === 'darwin' ? '~/Library/Application Support/ForNeed/settings.json' :
              '~/.config/ForNeed/settings.json'}
           </div>
@@ -685,7 +685,21 @@ function DatabaseSettings() {
 
 // 빈 페이지 컴포넌트들
 function Home() {
-  const [cards, setCards] = useState<{ id: string; title: string; cardtype?: string | null }[]>([]);
+  const [cards, setCards] = useState<{ 
+    id: string; 
+    title: string; 
+    cardtype?: string | null;
+    complete?: number;
+    activate?: number;
+    duration?: number;
+    content?: string;
+    startdate?: string;
+    enddate?: string;
+    es?: string;
+    ls?: string;
+    price?: number;
+    createdat?: string;
+  }[]>([]);
   const [currentCardId,setCurrentCardId]=useState<string>('');
   const [relations, setRelations] = useState<{
     relation_id: number;
@@ -1341,11 +1355,12 @@ function Home() {
     // 완료상태 필터 적용
     if (completionFilter && completionFilter.enabled) {
       filteredCards = filteredCards.filter(card => {
-        const isCompleted = Boolean((card as any).complete);
-        // 디버깅용 로그 (임시)
-        if (card.title && card.title.includes('카드 지울지 말지 의문 띄우는거')) {
-          console.log(`카드 "${card.title}" - complete 값:`, (card as any).complete, 'isCompleted:', isCompleted, 'filter type:', completionFilter.type);
-        }
+        // DB에서 complete는 0(미완료) 또는 1(완료)로 저장됨
+        const isCompleted = card.complete === 1;
+        
+        // 디버깅용 로그
+        console.log(`[완료상태 필터] 카드: "${card.title}", complete 값: ${card.complete}, isCompleted: ${isCompleted}, 필터 타입: ${completionFilter.type}`);
+        
         return completionFilter.type === 'completed-only' ? isCompleted : !isCompleted;
       });
     }
@@ -1353,7 +1368,8 @@ function Home() {
     // 활성상태 필터 적용
     if (activateFilter && activateFilter.enabled) {
       filteredCards = filteredCards.filter(card => {
-        const isActive = Boolean((card as any).activate);
+        // DB에서 activate는 0(비활성) 또는 1(활성)로 저장됨
+        const isActive = card.activate === 1;
         return activateFilter.type === 'active-only' ? isActive : !isActive;
       });
     }
@@ -1363,7 +1379,7 @@ function Home() {
       const filterDuration = parseInt(durationFilter.duration);
       if (!isNaN(filterDuration)) {
         filteredCards = filteredCards.filter(card => {
-          const cardDuration = parseInt((card as any).duration || 0);
+          const cardDuration = parseInt(card.duration?.toString() || '0');
           if (durationFilter.operator === 'gte') {
             return cardDuration >= filterDuration;
           } else {
@@ -1376,7 +1392,7 @@ function Home() {
     // 내용 필터 적용
     if (contentFilter.enabled && contentFilter.content.trim()) {
       filteredCards = filteredCards.filter(card => {
-        const content = ((card as any).content || '').toLowerCase();
+        const content = (card.content || '').toLowerCase();
         return content.includes(contentFilter.content.toLowerCase());
       });
     }
@@ -1384,7 +1400,7 @@ function Home() {
     // 생성일 필터 적용
     if (createDateFilter.enabled && (createDateFilter.startDate || createDateFilter.endDate)) {
       filteredCards = filteredCards.filter(card => {
-        const createDate = new Date((card as any).createdat);
+        const createDate = new Date(card.createdat || '');
         const startDate = createDateFilter.startDate ? new Date(createDateFilter.startDate) : null;
         const endDate = createDateFilter.endDate ? new Date(createDateFilter.endDate) : null;
 
@@ -1411,7 +1427,7 @@ function Home() {
     if (amountFilter.enabled && amountFilter.amount) {
       const filterAmount = parseFloat(amountFilter.amount);
       filteredCards = filteredCards.filter(card => {
-        const cardAmount = parseFloat((card as any).amount || 0);
+        const cardAmount = parseFloat(card.price?.toString() || '0');
         if (amountFilter.operator === 'gte') {
           return cardAmount >= filterAmount;
         } else {
@@ -6877,7 +6893,7 @@ function Settings() {
       )}
 
       <h2 style={{ marginTop: 0, marginBottom: 32, color: '#fff' }}>설정</h2>
-      
+
       {/* DB 설정 섹션 */}
       <DatabaseSettings />
 
