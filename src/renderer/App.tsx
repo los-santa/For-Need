@@ -673,9 +673,7 @@ function DatabaseSettings() {
 
           <div style={{ marginTop: 16, fontSize: 12, color: '#aaa' }}>
             <strong>앱 버전:</strong> {dbSettings.version}<br/>
-            <strong>설정 파일:</strong> {process.platform === 'win32' ? '%APPDATA%\\ForNeed\\settings.json' :
-             process.platform === 'darwin' ? '~/Library/Application Support/ForNeed/settings.json' :
-             '~/.config/ForNeed/settings.json'}
+            <strong>설정 파일:</strong> ~/Library/Application Support/ForNeed/settings.json (macOS)
           </div>
         </div>
       )}
