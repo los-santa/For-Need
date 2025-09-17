@@ -685,9 +685,9 @@ function DatabaseSettings() {
 
 // 빈 페이지 컴포넌트들
 function Home() {
-  const [cards, setCards] = useState<{ 
-    id: string; 
-    title: string; 
+  const [cards, setCards] = useState<{
+    id: string;
+    title: string;
     cardtype?: string | null;
     complete?: number;
     activate?: number;
@@ -1357,10 +1357,10 @@ function Home() {
       filteredCards = filteredCards.filter(card => {
         // DB에서 complete는 0(미완료) 또는 1(완료)로 저장됨
         const isCompleted = card.complete === 1;
-        
+
         // 디버깅용 로그
         console.log(`[완료상태 필터] 카드: "${card.title}", complete 값: ${card.complete}, isCompleted: ${isCompleted}, 필터 타입: ${completionFilter.type}`);
-        
+
         return completionFilter.type === 'completed-only' ? isCompleted : !isCompleted;
       });
     }
@@ -5735,6 +5735,19 @@ function Visualization() {
 
   // 카드 검색 상태
   const [vizCardSearchTerm, setVizCardSearchTerm] = useState('');
+
+  // 정렬 옵션 상태 (시각화용)
+  const [sortOptions, setSortOptions] = useState({
+    relationCount: {
+      enabled: false,
+      relationTypes: [] as string[],
+      order: 'desc' as 'asc' | 'desc'
+    },
+    amount: {
+      enabled: false,
+      order: 'desc' as 'asc' | 'desc'
+    }
+  });
 
   // 설정 상태
   const [settings, setSettings] = useState({
