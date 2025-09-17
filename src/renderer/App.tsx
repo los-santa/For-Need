@@ -8718,6 +8718,11 @@ function RelationForm({ cards, refreshCards }: { cards: { id: string; title: str
   const [relationType, setRelationType] = useState('1');
   const [sourceCard, setSourceCard] = useState('');
   const [targetCard, setTargetCard] = useState('');
+  
+  // 텍스트 입력 모드 상태
+  const [useTextInput, setUseTextInput] = useState(false);
+  const [sourceCardText, setSourceCardText] = useState('');
+  const [targetCardText, setTargetCardText] = useState('');
 
   const relationTypeOptions = [
     { id: 1, name: 'for' },
@@ -8727,21 +8732,25 @@ function RelationForm({ cards, refreshCards }: { cards: { id: string; title: str
   ];
 
   const handleSubmit = async () => {
-    if (!sourceCard || !targetCard) return;
+    // 텍스트 입력 모드와 셀렉트 모드에 따라 다른 값 사용
+    const sourceValue = useTextInput ? sourceCardText.trim() : sourceCard;
+    const targetValue = useTextInput ? targetCardText.trim() : targetCard;
+    
+    if (!sourceValue || !targetValue) return;
 
-    let srcId = sourceCard;
-    let tgtId = targetCard;
+    let srcId = sourceValue;
+    let tgtId = targetValue;
 
     // 소스 카드가 존재하지 않으면 새로 생성
-    const srcFound = cards.find(c => c.id === sourceCard || c.title === sourceCard);
+    const srcFound = cards.find(c => c.id === sourceValue || c.title === sourceValue);
     if (!srcFound) {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const res = (await window.electron.ipcRenderer.invoke('create-card', { title: sourceCard })) as any;
+      const res = (await window.electron.ipcRenderer.invoke('create-card', { title: sourceValue })) as any;
       if (res.success) {
         srcId = res.data.id;
-        setSourceCard(srcId); // 셀렉트가 비워지지 않도록 갱신
+        if (!useTextInput) setSourceCard(srcId); // 셀렉트가 비워지지 않도록 갱신
       } else if (res.error === 'duplicate-title') {
-        const dup = cards.find(c => c.title === sourceCard);
+        const dup = cards.find(c => c.title === sourceValue);
         if (dup) srcId = dup.id;
       }
     } else {
@@ -8749,14 +8758,14 @@ function RelationForm({ cards, refreshCards }: { cards: { id: string; title: str
     }
 
     // 타겟 카드가 존재하지 않으면 새로 생성 (기존 로직과 동일하게 빈칸 유지)
-    const tgtFound = cards.find(c => c.id === targetCard || c.title === targetCard);
+    const tgtFound = cards.find(c => c.id === targetValue || c.title === targetValue);
     if (!tgtFound) {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const res = (await window.electron.ipcRenderer.invoke('create-card', { title: targetCard })) as any;
+      const res = (await window.electron.ipcRenderer.invoke('create-card', { title: targetValue })) as any;
       if (res.success) {
         tgtId = res.data.id;
       } else if (res.error === 'duplicate-title') {
-        const dup = cards.find(c => c.title === targetCard);
+        const dup = cards.find(c => c.title === targetValue);
         if (dup) tgtId = dup.id;
       }
     } else {
@@ -8781,15 +8790,85 @@ function RelationForm({ cards, refreshCards }: { cards: { id: string; title: str
 
     if (result.success) {
       // SourceCard 유지, TargetCard 초기화
+      if (useTextInput) {
+        setTargetCardText('');
+      } else {
       setTargetCard('');
+      }
       refreshCards();
+    }
+  };
+
+  // Enter 키 핸들러
+  const handleKeyPress = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      handleSubmit();
     }
   };
 
   return (
     <div>
       <h3>New Relation</h3>
+      <div style={{ marginBottom: 12 }}>
+        <label style={{ display: 'flex', alignItems: 'center', gap: 8, color: '#fff' }}>
+          <input
+            type="checkbox"
+            checked={useTextInput}
+            onChange={(e) => setUseTextInput(e.target.checked)}
+          />
+          <span>텍스트 입력 모드 (Enter로 관계 생성)</span>
+        </label>
+      </div>
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+        {useTextInput ? (
+          <>
+            {/* 텍스트 입력 모드 */}
+            <input
+              type="text"
+              placeholder="Source Card 이름 입력"
+              value={sourceCardText}
+              onChange={(e) => setSourceCardText(e.target.value)}
+              onKeyPress={handleKeyPress}
+              style={{ 
+                flex: '1 0 150px', 
+                padding: '8px', 
+                backgroundColor: '#333', 
+                color: '#fff', 
+                border: '1px solid #555',
+                borderRadius: '4px'
+              }}
+            />
+            <select
+              value={relationType}
+              onChange={(e) => setRelationType(e.target.value)}
+              style={{ flex: '0 0 120px' }}
+            >
+              {relationTypeOptions.map((opt) => (
+                <option key={opt.id} value={opt.id}>
+                  {opt.name}
+                </option>
+              ))}
+            </select>
+            <input
+              type="text"
+              placeholder="Target Card 이름 입력"
+              value={targetCardText}
+              onChange={(e) => setTargetCardText(e.target.value)}
+              onKeyPress={handleKeyPress}
+              style={{ 
+                flex: '1 0 150px', 
+                padding: '8px', 
+                backgroundColor: '#333', 
+                color: '#fff', 
+                border: '1px solid #555',
+                borderRadius: '4px'
+              }}
+            />
+          </>
+        ) : (
+          <>
+            {/* 셀렉트 박스 모드 */}
         <select
           value={sourceCard}
           onChange={(e) => setSourceCard(e.target.value)}
@@ -8825,8 +8904,10 @@ function RelationForm({ cards, refreshCards }: { cards: { id: string; title: str
             </option>
           ))}
         </select>
+          </>
+        )}
         <button type="button" onClick={handleSubmit}>
-          Save
+          {useTextInput ? '생성 (Enter)' : 'Save'}
         </button>
       </div>
     </div>
