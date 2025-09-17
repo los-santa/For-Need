@@ -8718,7 +8718,7 @@ function RelationForm({ cards, refreshCards }: { cards: { id: string; title: str
   const [relationType, setRelationType] = useState('1');
   const [sourceCard, setSourceCard] = useState('');
   const [targetCard, setTargetCard] = useState('');
-  
+
   // 텍스트 입력 모드 상태
   const [useTextInput, setUseTextInput] = useState(false);
   const [sourceCardText, setSourceCardText] = useState('');
@@ -8732,11 +8732,25 @@ function RelationForm({ cards, refreshCards }: { cards: { id: string; title: str
   ];
 
   const handleSubmit = async () => {
+    console.log('🔄 [RelationForm] handleSubmit 시작');
     // 텍스트 입력 모드와 셀렉트 모드에 따라 다른 값 사용
     const sourceValue = useTextInput ? sourceCardText.trim() : sourceCard;
     const targetValue = useTextInput ? targetCardText.trim() : targetCard;
     
-    if (!sourceValue || !targetValue) return;
+    console.log('📝 [RelationForm] 입력값:', {
+      useTextInput,
+      sourceValue,
+      targetValue,
+      sourceCardText,
+      targetCardText,
+      sourceCard,
+      targetCard
+    });
+    
+    if (!sourceValue || !targetValue) {
+      console.log('❌ [RelationForm] 빈 값으로 인해 중단');
+      return;
+    }
 
     let srcId = sourceValue;
     let tgtId = targetValue;
@@ -8774,9 +8788,16 @@ function RelationForm({ cards, refreshCards }: { cards: { id: string; title: str
 
     // Source와 Target이 같은 경우 방지
     if (srcId === tgtId) {
+      console.log('❌ [RelationForm] 같은 카드로 관계 생성 시도');
       alert('자기 자신과의 관계는 만들 수 없습니다');
       return;
     }
+
+    console.log('🔗 [RelationForm] 관계 생성 시도:', {
+      relationtype_id: Number(relationType),
+      source: srcId,
+      target: tgtId
+    });
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const result = (await window.electron.ipcRenderer.invoke(
@@ -8788,20 +8809,27 @@ function RelationForm({ cards, refreshCards }: { cards: { id: string; title: str
       },
     )) as any;
 
+    console.log('📊 [RelationForm] 관계 생성 결과:', result);
+
     if (result.success) {
+      console.log('✅ [RelationForm] 관계 생성 성공!');
       // SourceCard 유지, TargetCard 초기화
       if (useTextInput) {
         setTargetCardText('');
       } else {
-      setTargetCard('');
+        setTargetCard('');
       }
       refreshCards();
+    } else {
+      console.log('❌ [RelationForm] 관계 생성 실패:', result.error);
+      alert(`관계 생성 실패: ${result.error || '알 수 없는 오류'}`);
     }
   };
 
   // Enter 키 핸들러
   const handleKeyPress = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter') {
+      console.log('⌨️ [RelationForm] Enter 키 감지');
       e.preventDefault();
       handleSubmit();
     }
@@ -8830,11 +8858,11 @@ function RelationForm({ cards, refreshCards }: { cards: { id: string; title: str
               value={sourceCardText}
               onChange={(e) => setSourceCardText(e.target.value)}
               onKeyPress={handleKeyPress}
-              style={{ 
-                flex: '1 0 150px', 
-                padding: '8px', 
-                backgroundColor: '#333', 
-                color: '#fff', 
+              style={{
+                flex: '1 0 150px',
+                padding: '8px',
+                backgroundColor: '#333',
+                color: '#fff',
                 border: '1px solid #555',
                 borderRadius: '4px'
               }}
@@ -8856,11 +8884,11 @@ function RelationForm({ cards, refreshCards }: { cards: { id: string; title: str
               value={targetCardText}
               onChange={(e) => setTargetCardText(e.target.value)}
               onKeyPress={handleKeyPress}
-              style={{ 
-                flex: '1 0 150px', 
-                padding: '8px', 
-                backgroundColor: '#333', 
-                color: '#fff', 
+              style={{
+                flex: '1 0 150px',
+                padding: '8px',
+                backgroundColor: '#333',
+                color: '#fff',
                 border: '1px solid #555',
                 borderRadius: '4px'
               }}
