@@ -551,10 +551,12 @@ function DatabaseSettings() {
   const [dbSettings, setDbSettings] = useState<any>(null);
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState('');
+  const [recentDbPaths, setRecentDbPaths] = useState<string[]>([]);
 
   // 설정 로드
   useEffect(() => {
     loadDbSettings();
+    loadRecentDbPaths();
   }, []);
 
   const loadDbSettings = async () => {
@@ -568,6 +570,17 @@ function DatabaseSettings() {
     } catch (error) {
       console.error('Failed to load settings:', error);
       setMessage('설정을 불러오는 중 오류가 발생했습니다.');
+    }
+  };
+
+  const loadRecentDbPaths = async () => {
+    try {
+      const result = await window.electron.ipcRenderer.invoke('get-recent-db-paths');
+      if (result.success) {
+        setRecentDbPaths(result.data || []);
+      }
+    } catch (error) {
+      console.error('Failed to load recent DB paths:', error);
     }
   };
 
@@ -602,6 +615,46 @@ function DatabaseSettings() {
       setMessage('DB 경로 선택 중 오류가 발생했습니다.');
     } finally {
       setLoading(false);
+    }
+  };
+
+  // 최근 DB 경로 선택
+  const handleSelectRecentDb = async (dbPath: string) => {
+    try {
+      setLoading(true);
+      const result = await window.electron.ipcRenderer.invoke('change-database-path', dbPath);
+      
+      if (result.success) {
+        setMessage('DB 경로가 변경되었습니다. 앱을 재시작해주세요.');
+        loadDbSettings();
+        loadRecentDbPaths();
+        
+        if (result.requiresRestart) {
+          const shouldRestart = window.confirm('변경사항을 적용하려면 앱을 재시작해야 합니다. 지금 재시작하시겠습니까?');
+          if (shouldRestart) {
+            await window.electron.ipcRenderer.invoke('restart-app');
+          }
+        }
+      } else {
+        setMessage(`DB 경로 변경 실패: ${result.error}`);
+      }
+    } catch (error) {
+      console.error('Failed to change database path:', error);
+      setMessage('DB 경로 변경 중 오류가 발생했습니다.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // 최근 DB 경로에서 제거
+  const handleRemoveRecentDb = async (dbPath: string) => {
+    try {
+      const result = await window.electron.ipcRenderer.invoke('remove-recent-db-path', dbPath);
+      if (result.success) {
+        loadRecentDbPaths(); // 목록 새로고침
+      }
+    } catch (error) {
+      console.error('Failed to remove recent DB path:', error);
     }
   };
 
@@ -670,6 +723,73 @@ function DatabaseSettings() {
             💡 DB 위치를 변경하면 새로운 데이터베이스 파일이 생성됩니다.<br/>
             기존 데이터를 유지하려면 기존 DB 파일을 새 위치로 복사해주세요.
           </div>
+
+          {/* 최근 사용한 DB 목록 */}
+          {recentDbPaths.length > 0 && (
+            <div style={{ marginTop: 20 }}>
+              <h4 style={{ margin: '0 0 12px 0', color: '#ccc', fontSize: 14 }}>
+                📂 최근 사용한 데이터베이스
+              </h4>
+              <div style={{ maxHeight: 200, overflowY: 'auto' }}>
+                {recentDbPaths.map((dbPath, index) => (
+                  <div 
+                    key={index}
+                    style={{ 
+                      display: 'flex', 
+                      alignItems: 'center', 
+                      gap: 8, 
+                      marginBottom: 8,
+                      padding: 8,
+                      background: '#2a2a2a',
+                      borderRadius: 4,
+                      border: '1px solid #444'
+                    }}
+                  >
+                    <div 
+                      style={{ 
+                        flex: 1, 
+                        fontSize: 11, 
+                        fontFamily: 'monospace',
+                        color: '#ccc',
+                        wordBreak: 'break-all'
+                      }}
+                    >
+                      {dbPath}
+                    </div>
+                    <button
+                      onClick={() => handleSelectRecentDb(dbPath)}
+                      disabled={loading}
+                      style={{
+                        background: '#4CAF50',
+                        color: '#fff',
+                        border: 'none',
+                        padding: '4px 8px',
+                        borderRadius: 3,
+                        cursor: 'pointer',
+                        fontSize: 11
+                      }}
+                    >
+                      선택
+                    </button>
+                    <button
+                      onClick={() => handleRemoveRecentDb(dbPath)}
+                      style={{
+                        background: '#f44336',
+                        color: '#fff',
+                        border: 'none',
+                        padding: '4px 8px',
+                        borderRadius: 3,
+                        cursor: 'pointer',
+                        fontSize: 11
+                      }}
+                    >
+                      제거
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
 
           <div style={{ marginTop: 16, fontSize: 12, color: '#aaa' }}>
             <strong>앱 버전:</strong> {dbSettings.version}<br/>
@@ -8736,7 +8856,7 @@ function RelationForm({ cards, refreshCards }: { cards: { id: string; title: str
     // 텍스트 입력 모드와 셀렉트 모드에 따라 다른 값 사용
     const sourceValue = useTextInput ? sourceCardText.trim() : sourceCard;
     const targetValue = useTextInput ? targetCardText.trim() : targetCard;
-    
+
     console.log('📝 [RelationForm] 입력값:', {
       useTextInput,
       sourceValue,
@@ -8746,7 +8866,7 @@ function RelationForm({ cards, refreshCards }: { cards: { id: string; title: str
       sourceCard,
       targetCard
     });
-    
+
     if (!sourceValue || !targetValue) {
       console.log('❌ [RelationForm] 빈 값으로 인해 중단');
       return;

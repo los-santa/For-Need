@@ -335,10 +335,10 @@ interface Card {
 ipcMain.handle('get-cards', async () => {
   try {
     const cards = db.prepare(`
-      SELECT 
-        id, 
-        title, 
-        cardtype, 
+      SELECT
+        id,
+        title,
+        cardtype,
         complete,
         activate,
         duration,
@@ -349,7 +349,7 @@ ipcMain.handle('get-cards', async () => {
         ls,
         price,
         createdat
-      FROM CARDS 
+      FROM CARDS
       WHERE deleted_at IS NULL
     `).all() as Card[];
     return { success: true, data: cards };
@@ -2072,7 +2072,7 @@ ipcMain.handle('get-project-cards', async (event, projectId: string) => {
 // =========================
 
 import { dialog } from 'electron';
-import { loadSettings, saveSettings, setDatabasePath, getDatabasePath } from './settings';
+import { loadSettings, saveSettings, setDatabasePath, getDatabasePath, getRecentDbPaths, removeFromRecentDbPaths } from './settings';
 
 // 현재 설정 가져오기
 ipcMain.handle('get-settings', async () => {
@@ -2132,6 +2132,28 @@ ipcMain.handle('change-database-path', async (event, newPath: string) => {
 ipcMain.handle('restart-app', async () => {
   app.relaunch();
   app.exit();
+});
+
+// 최근 DB 경로 목록 가져오기
+ipcMain.handle('get-recent-db-paths', async () => {
+  try {
+    const recentPaths = getRecentDbPaths();
+    return { success: true, data: recentPaths };
+  } catch (error) {
+    log.error('Failed to get recent DB paths:', error);
+    return { success: false, error: 'Failed to get recent DB paths' };
+  }
+});
+
+// 최근 DB 경로에서 제거
+ipcMain.handle('remove-recent-db-path', async (event, dbPath: string) => {
+  try {
+    removeFromRecentDbPaths(dbPath);
+    return { success: true };
+  } catch (error) {
+    log.error('Failed to remove recent DB path:', error);
+    return { success: false, error: 'Failed to remove recent DB path' };
+  }
 });
 
 // =========================
