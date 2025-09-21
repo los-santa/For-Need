@@ -552,11 +552,13 @@ function DatabaseSettings() {
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState('');
   const [recentDbPaths, setRecentDbPaths] = useState<string[]>([]);
+  const [localDatabases, setLocalDatabases] = useState<any[]>([]);
 
   // 설정 로드
   useEffect(() => {
     loadDbSettings();
     loadRecentDbPaths();
+    loadLocalDatabases();
   }, []);
 
   const loadDbSettings = async () => {
@@ -581,6 +583,17 @@ function DatabaseSettings() {
       }
     } catch (error) {
       console.error('Failed to load recent DB paths:', error);
+    }
+  };
+
+  const loadLocalDatabases = async () => {
+    try {
+      const result = await window.electron.ipcRenderer.invoke('get-local-databases');
+      if (result.success) {
+        setLocalDatabases(result.data || []);
+      }
+    } catch (error) {
+      console.error('Failed to load local databases:', error);
     }
   };
 
@@ -663,15 +676,16 @@ function DatabaseSettings() {
     try {
       setLoading(true);
       const result = await window.electron.ipcRenderer.invoke('create-new-database-path');
-      
+
       if (result.success && result.path) {
         const changeResult = await window.electron.ipcRenderer.invoke('change-database-path', result.path);
-        
+
         if (changeResult.success) {
           setMessage('새 DB 파일이 생성되었습니다. 앱을 재시작해주세요.');
           loadDbSettings();
           loadRecentDbPaths();
-          
+          loadLocalDatabases();
+
           if (changeResult.requiresRestart) {
             const shouldRestart = window.confirm('변경사항을 적용하려면 앱을 재시작해야 합니다. 지금 재시작하시겠습니까?');
             if (shouldRestart) {
@@ -689,6 +703,64 @@ function DatabaseSettings() {
       setMessage('새 DB 생성 중 오류가 발생했습니다.');
     } finally {
       setLoading(false);
+    }
+  };
+
+  // 로컬 DB 선택
+  const handleSelectLocalDb = async (dbPath: string) => {
+    try {
+      setLoading(true);
+      const result = await window.electron.ipcRenderer.invoke('change-database-path', dbPath);
+      
+      if (result.success) {
+        setMessage('DB가 변경되었습니다. 앱을 재시작해주세요.');
+        loadDbSettings();
+        loadRecentDbPaths();
+        
+        if (result.requiresRestart) {
+          const shouldRestart = window.confirm('변경사항을 적용하려면 앱을 재시작해야 합니다. 지금 재시작하시겠습니까?');
+          if (shouldRestart) {
+            await window.electron.ipcRenderer.invoke('restart-app');
+          }
+        }
+      } else {
+        setMessage(`DB 변경 실패: ${result.error}`);
+      }
+    } catch (error) {
+      console.error('Failed to select local database:', error);
+      setMessage('로컬 DB 선택 중 오류가 발생했습니다.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // 로컬 DB 삭제
+  const handleDeleteLocalDb = async (dbPath: string, dbName: string) => {
+    if (!window.confirm(`정말로 "${dbName}" 데이터베이스를 삭제하시겠습니까?\n\n⚠️ 이 작업은 되돌릴 수 없습니다.`)) {
+      return;
+    }
+
+    try {
+      const result = await window.electron.ipcRenderer.invoke('delete-local-database', dbPath);
+      if (result.success) {
+        setMessage(`"${dbName}" 데이터베이스가 삭제되었습니다.`);
+        loadLocalDatabases(); // 목록 새로고침
+      } else {
+        setMessage(`DB 삭제 실패: ${result.error}`);
+      }
+    } catch (error) {
+      console.error('Failed to delete local database:', error);
+      setMessage('로컬 DB 삭제 중 오류가 발생했습니다.');
+    }
+  };
+
+  // Finder에서 보기
+  const handleShowInFinder = async (dbPath: string) => {
+    try {
+      await window.electron.ipcRenderer.invoke('show-in-finder', dbPath);
+    } catch (error) {
+      console.error('Failed to show in finder:', error);
+      setMessage('Finder에서 보기 중 오류가 발생했습니다.');
     }
   };
 
@@ -845,6 +917,92 @@ function DatabaseSettings() {
                     >
                       제거
                     </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* 로컬 데이터베이스 목록 */}
+          {localDatabases.length > 0 && (
+            <div style={{ marginTop: 24 }}>
+              <h4 style={{ margin: '0 0 12px 0', color: '#ccc', fontSize: 14 }}>
+                💾 로컬 데이터베이스 관리
+              </h4>
+              <div style={{ maxHeight: 300, overflowY: 'auto' }}>
+                {localDatabases.map((db, index) => (
+                  <div 
+                    key={index}
+                    style={{ 
+                      marginBottom: 12,
+                      padding: 12,
+                      background: '#2a2a2a',
+                      borderRadius: 6,
+                      border: '1px solid #444'
+                    }}
+                  >
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8 }}>
+                      <div style={{ flex: 1 }}>
+                        <div style={{ fontSize: 13, fontWeight: 'bold', color: '#fff', marginBottom: 4 }}>
+                          {db.displayName}
+                        </div>
+                        <div style={{ fontSize: 11, color: '#888', fontFamily: 'monospace', marginBottom: 4 }}>
+                          {db.name}
+                        </div>
+                        <div style={{ fontSize: 11, color: '#666' }}>
+                          크기: {(db.size / 1024).toFixed(1)}KB | 
+                          수정: {new Date(db.modified).toLocaleDateString('ko-KR')} {new Date(db.modified).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })}
+                        </div>
+                      </div>
+                    </div>
+                    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                      <button
+                        onClick={() => handleSelectLocalDb(db.path)}
+                        disabled={loading}
+                        style={{
+                          background: '#4CAF50',
+                          color: '#fff',
+                          border: 'none',
+                          padding: '6px 12px',
+                          borderRadius: 4,
+                          cursor: 'pointer',
+                          fontSize: 11,
+                          fontWeight: 'bold'
+                        }}
+                      >
+                        📂 선택
+                      </button>
+                      <button
+                        onClick={() => handleShowInFinder(db.path)}
+                        style={{
+                          background: '#2196F3',
+                          color: '#fff',
+                          border: 'none',
+                          padding: '6px 12px',
+                          borderRadius: 4,
+                          cursor: 'pointer',
+                          fontSize: 11,
+                          fontWeight: 'bold'
+                        }}
+                      >
+                        🔍 Finder에서 보기
+                      </button>
+                      <button
+                        onClick={() => handleDeleteLocalDb(db.path, db.displayName)}
+                        style={{
+                          background: '#f44336',
+                          color: '#fff',
+                          border: 'none',
+                          padding: '6px 12px',
+                          borderRadius: 4,
+                          cursor: 'pointer',
+                          fontSize: 11,
+                          fontWeight: 'bold'
+                        }}
+                      >
+                        🗑️ 삭제
+                      </button>
+                    </div>
                   </div>
                 ))}
               </div>

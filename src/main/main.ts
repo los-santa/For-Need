@@ -2073,6 +2073,9 @@ ipcMain.handle('get-project-cards', async (event, projectId: string) => {
 
 import { dialog } from 'electron';
 import { loadSettings, saveSettings, setDatabasePath, getDatabasePath, getRecentDbPaths, removeFromRecentDbPaths } from './settings';
+import { shell } from 'electron';
+import path from 'path';
+import fs from 'fs';
 
 // 현재 설정 가져오기
 ipcMain.handle('get-settings', async () => {
@@ -2177,6 +2180,67 @@ ipcMain.handle('remove-recent-db-path', async (event, dbPath: string) => {
   } catch (error) {
     log.error('Failed to remove recent DB path:', error);
     return { success: false, error: 'Failed to remove recent DB path' };
+  }
+});
+
+// 로컬 DB 목록 가져오기
+ipcMain.handle('get-local-databases', async () => {
+  try {
+    const localDbDir = path.join(app.getPath('userData'), 'local-databases');
+    
+    if (!fs.existsSync(localDbDir)) {
+      fs.mkdirSync(localDbDir, { recursive: true });
+      return { success: true, data: [] };
+    }
+
+    const files = fs.readdirSync(localDbDir);
+    const dbFiles = files.filter(file => file.endsWith('.db'));
+    
+    const dbList = dbFiles.map(file => {
+      const filePath = path.join(localDbDir, file);
+      const stats = fs.statSync(filePath);
+      return {
+        name: file,
+        path: filePath,
+        size: stats.size,
+        modified: stats.mtime.toISOString(),
+        displayName: file.replace('.db', '').replace(/-/g, ' ')
+      };
+    });
+
+    // 수정 시간 기준으로 정렬 (최신순)
+    dbList.sort((a, b) => new Date(b.modified).getTime() - new Date(a.modified).getTime());
+
+    return { success: true, data: dbList };
+  } catch (error) {
+    log.error('Failed to get local databases:', error);
+    return { success: false, error: 'Failed to get local databases' };
+  }
+});
+
+// 로컬 DB 삭제
+ipcMain.handle('delete-local-database', async (event, dbPath: string) => {
+  try {
+    if (fs.existsSync(dbPath)) {
+      fs.unlinkSync(dbPath);
+      return { success: true };
+    } else {
+      return { success: false, error: 'File not found' };
+    }
+  } catch (error) {
+    log.error('Failed to delete local database:', error);
+    return { success: false, error: 'Failed to delete local database' };
+  }
+});
+
+// Finder에서 파일 보기
+ipcMain.handle('show-in-finder', async (event, filePath: string) => {
+  try {
+    shell.showItemInFolder(filePath);
+    return { success: true };
+  } catch (error) {
+    log.error('Failed to show in finder:', error);
+    return { success: false, error: 'Failed to show in finder' };
   }
 });
 
