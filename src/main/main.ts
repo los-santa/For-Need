@@ -2088,8 +2088,32 @@ ipcMain.handle('get-settings', async () => {
 // DB 경로 선택 다이얼로그
 ipcMain.handle('select-database-path', async () => {
   try {
+    const result = await dialog.showOpenDialog({
+      title: '기존 DB 파일 선택 또는 새 위치 지정',
+      defaultPath: app.getPath('documents'),
+      filters: [
+        { name: 'Database Files', extensions: ['db'] },
+        { name: 'All Files', extensions: ['*'] }
+      ],
+      properties: ['openFile', 'createDirectory']
+    });
+
+    if (!result.canceled && result.filePaths && result.filePaths.length > 0) {
+      return { success: true, path: result.filePaths[0] };
+    }
+
+    return { success: false, canceled: true };
+  } catch (error) {
+    log.error('Failed to select database path:', error);
+    return { success: false, error: 'Failed to select database path' };
+  }
+});
+
+// 새 DB 파일 생성 다이얼로그
+ipcMain.handle('create-new-database-path', async () => {
+  try {
     const result = await dialog.showSaveDialog({
-      title: 'DB 저장 위치 선택',
+      title: '새 DB 파일 생성',
       defaultPath: 'database.db',
       filters: [
         { name: 'Database Files', extensions: ['db'] },
@@ -2103,8 +2127,8 @@ ipcMain.handle('select-database-path', async () => {
 
     return { success: false, canceled: true };
   } catch (error) {
-    log.error('Failed to select database path:', error);
-    return { success: false, error: 'Failed to select database path' };
+    log.error('Failed to create new database path:', error);
+    return { success: false, error: 'Failed to create new database path' };
   }
 });
 

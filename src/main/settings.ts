@@ -89,10 +89,10 @@ function addToRecentDbPaths(settings: AppSettings, dbPath: string): void {
 
   // 중복 제거
   settings.recentDbPaths = settings.recentDbPaths.filter(path => path !== dbPath);
-  
+
   // 맨 앞에 추가
   settings.recentDbPaths.unshift(dbPath);
-  
+
   // 최대 10개까지만 유지
   if (settings.recentDbPaths.length > 10) {
     settings.recentDbPaths = settings.recentDbPaths.slice(0, 10);

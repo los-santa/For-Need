@@ -2,7 +2,7 @@
 /* eslint no-unused-vars: off */
 import { contextBridge, ipcRenderer, IpcRendererEvent } from 'electron';
 
-export type Channels = 'ipc-example' | 'get-settings' | 'select-database-path' | 'change-database-path' | 'restart-app' | 'get-recent-db-paths' | 'remove-recent-db-path';
+export type Channels = 'ipc-example' | 'get-settings' | 'select-database-path' | 'create-new-database-path' | 'change-database-path' | 'restart-app' | 'get-recent-db-paths' | 'remove-recent-db-path';
 
 const electronHandler = {
   ipcRenderer: {

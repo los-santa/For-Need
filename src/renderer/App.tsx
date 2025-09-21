@@ -623,12 +623,12 @@ function DatabaseSettings() {
     try {
       setLoading(true);
       const result = await window.electron.ipcRenderer.invoke('change-database-path', dbPath);
-      
+
       if (result.success) {
         setMessage('DB 경로가 변경되었습니다. 앱을 재시작해주세요.');
         loadDbSettings();
         loadRecentDbPaths();
-        
+
         if (result.requiresRestart) {
           const shouldRestart = window.confirm('변경사항을 적용하려면 앱을 재시작해야 합니다. 지금 재시작하시겠습니까?');
           if (shouldRestart) {
@@ -655,6 +655,40 @@ function DatabaseSettings() {
       }
     } catch (error) {
       console.error('Failed to remove recent DB path:', error);
+    }
+  };
+
+  // 새 DB 파일 생성
+  const handleCreateNewDatabase = async () => {
+    try {
+      setLoading(true);
+      const result = await window.electron.ipcRenderer.invoke('create-new-database-path');
+      
+      if (result.success && result.path) {
+        const changeResult = await window.electron.ipcRenderer.invoke('change-database-path', result.path);
+        
+        if (changeResult.success) {
+          setMessage('새 DB 파일이 생성되었습니다. 앱을 재시작해주세요.');
+          loadDbSettings();
+          loadRecentDbPaths();
+          
+          if (changeResult.requiresRestart) {
+            const shouldRestart = window.confirm('변경사항을 적용하려면 앱을 재시작해야 합니다. 지금 재시작하시겠습니까?');
+            if (shouldRestart) {
+              await window.electron.ipcRenderer.invoke('restart-app');
+            }
+          }
+        } else {
+          setMessage(`새 DB 생성 실패: ${changeResult.error}`);
+        }
+      } else if (!result.canceled) {
+        setMessage('새 DB 파일 경로 선택에 실패했습니다.');
+      }
+    } catch (error) {
+      console.error('Failed to create new database:', error);
+      setMessage('새 DB 생성 중 오류가 발생했습니다.');
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -702,26 +736,52 @@ function DatabaseSettings() {
             </div>
           </div>
 
-          <button
-            onClick={handleSelectDatabasePath}
-            disabled={loading}
-            style={{
-              background: loading ? '#666' : '#4CAF50',
-              color: '#fff',
-              border: 'none',
-              padding: '10px 20px',
-              borderRadius: 6,
-              cursor: loading ? 'not-allowed' : 'pointer',
-              fontSize: 14,
-              fontWeight: 'bold'
-            }}
-          >
-            {loading ? '처리 중...' : '🔍 DB 위치 변경'}
-          </button>
+          <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+            <button
+              onClick={handleSelectDatabasePath}
+              disabled={loading}
+              style={{
+                background: loading ? '#666' : '#4CAF50',
+                color: '#fff',
+                border: 'none',
+                padding: '10px 20px',
+                borderRadius: 6,
+                cursor: loading ? 'not-allowed' : 'pointer',
+                fontSize: 14,
+                fontWeight: 'bold',
+                flex: 1,
+                minWidth: '150px'
+              }}
+            >
+              {loading ? '처리 중...' : '📂 기존 DB 선택'}
+            </button>
+            <button
+              onClick={handleCreateNewDatabase}
+              disabled={loading}
+              style={{
+                background: loading ? '#666' : '#2196F3',
+                color: '#fff',
+                border: 'none',
+                padding: '10px 20px',
+                borderRadius: 6,
+                cursor: loading ? 'not-allowed' : 'pointer',
+                fontSize: 14,
+                fontWeight: 'bold',
+                flex: 1,
+                minWidth: '150px'
+              }}
+            >
+              {loading ? '처리 중...' : '🆕 새 DB 생성'}
+            </button>
+          </div>
 
           <div style={{ marginTop: 12, fontSize: 12, color: '#888' }}>
-            💡 DB 위치를 변경하면 새로운 데이터베이스 파일이 생성됩니다.<br/>
-            기존 데이터를 유지하려면 기존 DB 파일을 새 위치로 복사해주세요.
+            <div style={{ marginBottom: 6 }}>
+              📂 <strong>기존 DB 선택</strong>: 이미 있는 데이터베이스 파일을 선택합니다.
+            </div>
+            <div>
+              🆕 <strong>새 DB 생성</strong>: 새로운 빈 데이터베이스 파일을 생성합니다.
+            </div>
           </div>
 
           {/* 최근 사용한 DB 목록 */}
@@ -732,12 +792,12 @@ function DatabaseSettings() {
               </h4>
               <div style={{ maxHeight: 200, overflowY: 'auto' }}>
                 {recentDbPaths.map((dbPath, index) => (
-                  <div 
+                  <div
                     key={index}
-                    style={{ 
-                      display: 'flex', 
-                      alignItems: 'center', 
-                      gap: 8, 
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 8,
                       marginBottom: 8,
                       padding: 8,
                       background: '#2a2a2a',
@@ -745,10 +805,10 @@ function DatabaseSettings() {
                       border: '1px solid #444'
                     }}
                   >
-                    <div 
-                      style={{ 
-                        flex: 1, 
-                        fontSize: 11, 
+                    <div
+                      style={{
+                        flex: 1,
+                        fontSize: 11,
                         fontFamily: 'monospace',
                         color: '#ccc',
                         wordBreak: 'break-all'
@@ -8937,7 +8997,7 @@ function RelationForm({ cards, refreshCards }: { cards: { id: string; title: str
       if (useTextInput) {
         setTargetCardText('');
       } else {
-        setTargetCard('');
+      setTargetCard('');
       }
       refreshCards();
     } else {
