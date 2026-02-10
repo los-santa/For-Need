@@ -1,0 +1,84 @@
+---
+name: function
+description: This is about functions in the home.
+---
+
+
+# Overview
+“This document defines how the src and trg inputs, along with Enter key behavior in the Home screen’s relationship input, are used to create cards and relationships.”
+
+
+# Home Relationship Input – Enter Behavior Spec
+
+## Terminology
+
+* **src field**: The input field for the source card title in the Home relationship input
+* **trg field**: The input field for the target card title in the Home relationship input
+* **Card details (detail monitor & editor)**: The area that displays the details of the card whose title matches the text in the src field
+
+---
+
+## Basic Principles
+
+* If the src field text is empty, or if no card exists with the given title, **no card details are displayed**.
+* If a card exists with the same title as the src field text, **that card’s details are displayed in real time**.
+
+---
+
+## Enter Behavior (when pressing Enter in the src field)
+
+### Case A: The trg field is NOT empty
+
+1. Execute `createRelation()`
+2. **Clear only the src field** (the trg field is preserved)
+
+### Case B: The trg field IS empty
+
+1. Check whether a card exists with the title equal to the src field text
+2. If the card exists → **Do nothing**
+3. If the card does not exist → **Execute `make_new_card()`**
+4. Do NOT clear the src field (so the newly created card’s details can be viewed immediately)
+
+---
+
+## Function Specifications
+
+### Card Existence Check
+
+* Input: `title` (string)
+* Output: boolean
+* Behavior: Checks whether a card exists with the given title
+
+### Card Creation Function
+
+* Input: `title` (string)
+* Output: the newly created card
+
+### Relationship Creation Function
+
+1. Check whether cards exist with titles matching the text in the src and trg fields
+2. If a title does not exist, create a card with that title
+3. Create a relationship from the srcTitle card → the trgTitle card
+
+---
+
+## Card Detail Display Rules
+
+* Detect changes to the src field text in real time
+* If the text is empty: display nothing
+* If a card exists with a matching title: display that card’s details
+* If no such card exists: display nothing
+
+---
+
+## Normalization Rules
+
+* Apply `trim()` before comparing titles
+* Ignore empty strings
+
+---
+
+## Notes
+
+* Card titles are recommended to be UNIQUE
+* Constraints are required to prevent duplicate relationships

@@ -1,0 +1,43 @@
+# Dependencies
+node_modules
+
+# Build outputs
+build
+dist
+dist-electron
+
+# Electron build
+*.dmg
+*.exe
+*.AppImage
+*.deb
+*.rpm
+*.pacman
+
+# Environment variables
+.env
+.env.local
+.env.production.local
+
+# IDE
+.vscode
+.idea
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# TypeScript
+*.tsbuildinfo
+
+
+

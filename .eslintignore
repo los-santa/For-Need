@@ -18,10 +18,14 @@ node_modules
 # OSX
 .DS_Store
 
+# Build outputs
 release/app/dist
 release/build
+build
+dist
 .erb/dll
 
+# IDEs and other
 .idea
 npm-debug.log.*
 *.css.d.ts

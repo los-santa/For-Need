@@ -6,6 +6,8 @@ export interface AppSettings {
   dbPath?: string;
   version: string;
   recentDbPaths?: string[]; // 최근 사용한 DB 경로 목록
+  language?: 'ko' | 'en'; // 언어 설정
+  theme?: 'brown' | 'black-gray-white' | 'dark' | 'light'; // 테마 설정
 }
 
 // 설정 파일 경로
@@ -16,7 +18,9 @@ const settingsPath = path.join(settingsDir, 'settings.json');
 const defaultSettings: AppSettings = {
   dbPath: path.join(app.getPath('home'), '.forneed', 'database.db'),
   version: '1.0.0',
-  recentDbPaths: []
+  recentDbPaths: [],
+  language: 'ko', // 기본 언어는 한국어
+  theme: 'black-gray-white' // 기본 테마는 black-gray-white
 };
 
 // 설정 디렉토리 생성

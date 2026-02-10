@@ -397,8 +397,8 @@ ipcMain.handle('create-card', async (_, payload: { title: string; project_id?: s
     }
 
     // 'todo' 카드타입 ID 가져오기
-    const todoCardType = db.prepare("SELECT cardtype_id FROM CARDTYPES WHERE cardtype_name = 'todo'").get() as any;
-    const defaultCardTypeId = todoCardType ? todoCardType.cardtype_id : null;
+    const noTypeYetCardType = db.prepare("SELECT cardtype_id FROM CARDTYPES WHERE cardtype_name = 'no type yet'").get() as any;
+    const defaultCardTypeId = noTypeYetCardType ? noTypeYetCardType.cardtype_id : null;
 
     const id = randomUUID();
     const now = new Date().toISOString();
@@ -1066,10 +1066,10 @@ if (process.env.NODE_ENV === 'production') {
 const isDebug =
   process.env.NODE_ENV === 'development' || process.env.DEBUG_PROD === 'true';
 
-// 개발자 콘솔 자동 열림 비활성화
-// if (isDebug) {
-//   require('electron-debug').default();
-// }
+// 개발자 콘솔 자동 열림 활성화 (개발 모드)
+if (isDebug) {
+  require('electron-debug').default();
+}
 
 const installExtensions = async () => {
   const installer = require('electron-devtools-installer');
@@ -1107,6 +1107,8 @@ function createWindow() {
   mainWindow.once('ready-to-show', () => {
     if (isDev) {
       mainWindow.showInactive(); // 개발 모드에서는 포커스 없이
+      // 개발 모드에서 개발자 도구 자동 열기
+      mainWindow.webContents.openDevTools();
     } else {
       mainWindow.show(); // 프로덕션에서는 일반적으로 보여주기
     }
@@ -2088,6 +2090,19 @@ ipcMain.handle('get-settings', async () => {
   }
 });
 
+// 설정 저장하기
+ipcMain.handle('save-settings', async (_, newSettings: Partial<import('./settings').AppSettings>) => {
+  try {
+    const currentSettings = loadSettings();
+    const updatedSettings = { ...currentSettings, ...newSettings };
+    saveSettings(updatedSettings);
+    return { success: true };
+  } catch (error) {
+    log.error('Failed to save settings:', error);
+    return { success: false, error: 'Failed to save settings' };
+  }
+});
+
 // DB 경로 선택 다이얼로그
 ipcMain.handle('select-database-path', async () => {
   try {
@@ -2187,7 +2202,7 @@ ipcMain.handle('remove-recent-db-path', async (event, dbPath: string) => {
 ipcMain.handle('get-local-databases', async () => {
   try {
     const localDbDir = path.join(app.getPath('userData'), 'local-databases');
-    
+
     if (!fs.existsSync(localDbDir)) {
       fs.mkdirSync(localDbDir, { recursive: true });
       return { success: true, data: [] };
@@ -2195,7 +2210,7 @@ ipcMain.handle('get-local-databases', async () => {
 
     const files = fs.readdirSync(localDbDir);
     const dbFiles = files.filter(file => file.endsWith('.db'));
-    
+
     const dbList = dbFiles.map(file => {
       const filePath = path.join(localDbDir, file);
       const stats = fs.statSync(filePath);

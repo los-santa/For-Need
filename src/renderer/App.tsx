@@ -1,10 +1,15 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, createContext, useContext, useRef } from 'react';
 import { MemoryRouter as Router, Routes, Route, Link } from 'react-router-dom';
 // 일단 기본 그래프뷰로 되돌리고 나중에 고급 라이브러리 적용
 // import ForceGraph2D from 'react-force-graph';
 // import ForceGraph3D from 'react-force-graph/dist/forcegraph3d';
 // D3는 react-force-graph에 내장되어 있어서 별도 import 불필요
+import { motion } from 'framer-motion';
+import { Plus, GitBranch, ArrowRight, X, ChevronLeft, ChevronRight } from 'lucide-react';
 import './App.css';
+import { initLanguage, getLanguage, setLanguage, t, type Language } from './i18n';
+import { applyTheme, themeNames, type Theme, getThemeColors } from './theme';
+import ScheduleAndBudget from './ScheduleAndBudget';
 
 interface Project {
   project_id: string;
@@ -16,14 +21,14 @@ interface Project {
 // 공통 조회용 테이블 컴포넌트
 // --------------------------------------------
 function GenericTable({ data }: { data: Record<string, unknown>[] }) {
-  if (!data.length) return <p style={{ color: '#888' }}>데이터가 없습니다.</p>;
+  if (!data.length) return <p style={{ color: 'var(--text-muted)' }}>데이터가 없습니다.</p>;
   const keys = Object.keys(data[0]);
   return (
     <table style={{ width: '100%', borderCollapse: 'collapse', tableLayout: 'fixed' }}>
       <thead>
         <tr>
           {keys.map((k) => (
-            <th key={k} style={{ textAlign: 'left', borderBottom: '1px solid #555', padding: '4px', wordBreak:'break-all' }}>{k}</th>
+            <th key={k} style={{ textAlign: 'left', borderBottom: '1px solid var(--border-dark)', padding: '4px', wordBreak:'break-all' }}>{k}</th>
           ))}
         </tr>
       </thead>
@@ -31,7 +36,7 @@ function GenericTable({ data }: { data: Record<string, unknown>[] }) {
         {data.map((row, idx) => (
           <tr key={idx}>
             {keys.map((k) => (
-              <td key={k} style={{ padding: '4px', borderBottom: '1px solid #333', wordBreak: 'break-all' }}>
+              <td key={k} style={{ padding: '4px', borderBottom: '1px solid var(--border)', wordBreak: 'break-all' }}>
                 {String(row[k] ?? '')}
               </td>
             ))}
@@ -171,8 +176,8 @@ function ProjectManage() {
           onClick={() => setShowCreateModal(true)}
           style={{
             padding: '8px 16px',
-            backgroundColor: '#4CAF50',
-            color: 'white',
+            backgroundColor: 'var(--success)',
+            color: 'var(--text-primary)',
             border: 'none',
             borderRadius: '4px',
             cursor: 'pointer'
@@ -184,7 +189,7 @@ function ProjectManage() {
 
       <div style={{ display: 'flex', gap: '20px', height: 'calc(100vh - 120px)' }}>
         {/* 프로젝트 목록 */}
-        <div style={{ flex: '0 0 300px', border: '1px solid #333', borderRadius: '4px', padding: '10px' }}>
+        <div style={{ flex: '0 0 300px', border: '1px solid var(--border)', borderRadius: '4px', padding: '10px' }}>
           <h3>프로젝트 목록 ({projects.length}개)</h3>
           <div style={{ maxHeight: 'calc(100% - 50px)', overflowY: 'auto' }}>
             {projects.map((project) => (
@@ -201,7 +206,7 @@ function ProjectManage() {
                 onClick={() => selectProject(project)}
               >
                 <div style={{ fontWeight: 'bold' }}>{project.project_name}</div>
-                <div style={{ fontSize: '0.8em', color: '#888', marginTop: '4px' }}>
+                <div style={{ fontSize: '0.8em', color: 'var(--text-muted)', marginTop: '4px' }}>
                   카드: {(project as any).card_count || 0}개
                 </div>
                 <div style={{ fontSize: '0.7em', color: '#666' }}>
@@ -215,8 +220,8 @@ function ProjectManage() {
                     }}
                     style={{
                       padding: '4px 8px',
-                      backgroundColor: '#2196F3',
-                      color: 'white',
+                      backgroundColor: 'var(--info)',
+                      color: 'var(--text-primary)',
                       border: 'none',
                       borderRadius: '2px',
                       fontSize: '0.8em',
@@ -232,8 +237,8 @@ function ProjectManage() {
                     }}
                     style={{
                       padding: '4px 8px',
-                      backgroundColor: '#f44336',
-                      color: 'white',
+                      backgroundColor: 'var(--error)',
+                      color: 'var(--text-primary)',
                       border: 'none',
                       borderRadius: '2px',
                       fontSize: '0.8em',
@@ -249,7 +254,7 @@ function ProjectManage() {
         </div>
 
         {/* 선택된 프로젝트의 카드 목록 */}
-        <div style={{ flex: '1', border: '1px solid #333', borderRadius: '4px', padding: '10px' }}>
+        <div style={{ flex: '1', border: '1px solid var(--border)', borderRadius: '4px', padding: '10px' }}>
           {selectedProject ? (
             <>
               <h3>"{selectedProject.project_name}" 프로젝트의 카드들 ({projectCards.length}개)</h3>
@@ -261,7 +266,7 @@ function ProjectManage() {
                         key={card.id}
                         style={{
                           padding: '12px',
-                          border: '1px solid #555',
+                          border: '1px solid var(--border-dark)',
                           borderRadius: '4px',
                           backgroundColor: '#1a1a1a'
                         }}
@@ -270,7 +275,7 @@ function ProjectManage() {
                           {card.title}
                         </div>
                         {card.content && (
-                          <div style={{ fontSize: '0.9em', color: '#ccc', marginBottom: '8px' }}>
+                          <div style={{ fontSize: '0.9em', color: 'var(--text-secondary)', marginBottom: '8px' }}>
                             {card.content.length > 100
                               ? `${card.content.substring(0, 100)}...`
                               : card.content
@@ -286,7 +291,7 @@ function ProjectManage() {
                     ))}
                   </div>
                 ) : (
-                  <p style={{ color: '#888', textAlign: 'center', marginTop: '50px' }}>
+                  <p style={{ color: 'var(--text-muted)', textAlign: 'center', marginTop: '50px' }}>
                     이 프로젝트에 카드가 없습니다.
                   </p>
                 )}
@@ -308,7 +313,7 @@ function ProjectManage() {
           alignItems: 'center', justifyContent: 'center', zIndex: 1000
         }}>
           <div style={{
-            backgroundColor: '#2a2a2a', padding: '30px', borderRadius: '8px',
+            backgroundColor: 'var(--bg-modal)', padding: '30px', borderRadius: '8px',
             width: '400px', border: '1px solid #555'
           }}>
             <h3>새 프로젝트 만들기</h3>
@@ -319,8 +324,8 @@ function ProjectManage() {
               placeholder="프로젝트 이름을 입력하세요"
               style={{
                 width: '100%', padding: '12px', margin: '10px 0',
-                backgroundColor: '#1a1a1a', color: 'white',
-                border: '1px solid #555', borderRadius: '4px'
+                backgroundColor: 'var(--bg-darker)', color: 'var(--text-primary)',
+                border: '1px solid var(--border-dark)', borderRadius: '4px'
               }}
               onKeyDown={(e) => {
                 if (e.key === 'Enter') createProject();
@@ -339,7 +344,7 @@ function ProjectManage() {
                 }}
                 style={{
                   padding: '8px 16px', backgroundColor: '#666',
-                  color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer'
+                  color: 'var(--text-primary)', border: 'none', borderRadius: '4px', cursor: 'pointer'
                 }}
               >
                 취소
@@ -347,8 +352,8 @@ function ProjectManage() {
               <button
                 onClick={createProject}
                 style={{
-                  padding: '8px 16px', backgroundColor: '#4CAF50',
-                  color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer'
+                  padding: '8px 16px', backgroundColor: 'var(--success)',
+                  color: 'var(--text-primary)', border: 'none', borderRadius: '4px', cursor: 'pointer'
                 }}
                 disabled={!projectName.trim()}
               >
@@ -367,7 +372,7 @@ function ProjectManage() {
           alignItems: 'center', justifyContent: 'center', zIndex: 1000
         }}>
           <div style={{
-            backgroundColor: '#2a2a2a', padding: '30px', borderRadius: '8px',
+            backgroundColor: 'var(--bg-modal)', padding: '30px', borderRadius: '8px',
             width: '400px', border: '1px solid #555'
           }}>
             <h3>프로젝트 수정</h3>
@@ -378,8 +383,8 @@ function ProjectManage() {
               placeholder="새 프로젝트 이름을 입력하세요"
               style={{
                 width: '100%', padding: '12px', margin: '10px 0',
-                backgroundColor: '#1a1a1a', color: 'white',
-                border: '1px solid #555', borderRadius: '4px'
+                backgroundColor: 'var(--bg-darker)', color: 'var(--text-primary)',
+                border: '1px solid var(--border-dark)', borderRadius: '4px'
               }}
               onKeyDown={(e) => {
                 if (e.key === 'Enter') updateProject();
@@ -400,7 +405,7 @@ function ProjectManage() {
                 }}
                 style={{
                   padding: '8px 16px', backgroundColor: '#666',
-                  color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer'
+                  color: 'var(--text-primary)', border: 'none', borderRadius: '4px', cursor: 'pointer'
                 }}
               >
                 취소
@@ -408,8 +413,8 @@ function ProjectManage() {
               <button
                 onClick={updateProject}
                 style={{
-                  padding: '8px 16px', backgroundColor: '#4CAF50',
-                  color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer'
+                  padding: '8px 16px', backgroundColor: 'var(--success)',
+                  color: 'var(--text-primary)', border: 'none', borderRadius: '4px', cursor: 'pointer'
                 }}
                 disabled={!projectName.trim()}
               >
@@ -711,12 +716,12 @@ function DatabaseSettings() {
     try {
       setLoading(true);
       const result = await window.electron.ipcRenderer.invoke('change-database-path', dbPath);
-      
+
       if (result.success) {
         setMessage('DB가 변경되었습니다. 앱을 재시작해주세요.');
         loadDbSettings();
         loadRecentDbPaths();
-        
+
         if (result.requiresRestart) {
           const shouldRestart = window.confirm('변경사항을 적용하려면 앱을 재시작해야 합니다. 지금 재시작하시겠습니까?');
           if (shouldRestart) {
@@ -768,8 +773,8 @@ function DatabaseSettings() {
     <div style={{ marginBottom: 24 }}>
       {message && (
         <div style={{
-          background: message.includes('실패') || message.includes('오류') ? '#f44336' : '#4CAF50',
-          color: '#fff',
+          background: message.includes('실패') || message.includes('오류') ? 'var(--error)' : 'var(--success)',
+          color: 'var(--text-primary)',
           padding: '12px 16px',
           borderRadius: 8,
           marginBottom: 20,
@@ -781,22 +786,22 @@ function DatabaseSettings() {
 
       {dbSettings && (
         <div style={{
-          background: '#1e1e1e',
+          background: 'var(--bg-dark)',
           border: '1px solid #444',
           borderRadius: 8,
           padding: 24
         }}>
-          <h3 style={{ color: '#fff', marginBottom: 16, fontSize: 18 }}>
+          <h3 style={{ color: 'var(--text-primary)', marginBottom: 16, fontSize: 18 }}>
             🗄️ 데이터베이스 설정
           </h3>
 
           <div style={{ marginBottom: 16 }}>
-            <label style={{ display: 'block', color: '#ccc', marginBottom: 8, fontSize: 14 }}>
+            <label style={{ display: 'block', color: 'var(--text-secondary)', marginBottom: 8, fontSize: 14 }}>
               현재 DB 경로:
             </label>
             <div style={{
-              background: '#333',
-              color: '#fff',
+              background: 'var(--panel)',
+              color: 'var(--text-primary)',
               padding: '8px 12px',
               borderRadius: 4,
               fontSize: 13,
@@ -814,7 +819,7 @@ function DatabaseSettings() {
               disabled={loading}
               style={{
                 background: loading ? '#666' : '#4CAF50',
-                color: '#fff',
+                color: 'var(--text-primary)',
                 border: 'none',
                 padding: '10px 20px',
                 borderRadius: 6,
@@ -832,7 +837,7 @@ function DatabaseSettings() {
               disabled={loading}
               style={{
                 background: loading ? '#666' : '#2196F3',
-                color: '#fff',
+                color: 'var(--text-primary)',
                 border: 'none',
                 padding: '10px 20px',
                 borderRadius: 6,
@@ -859,7 +864,7 @@ function DatabaseSettings() {
           {/* 최근 사용한 DB 목록 */}
           {recentDbPaths.length > 0 && (
             <div style={{ marginTop: 20 }}>
-              <h4 style={{ margin: '0 0 12px 0', color: '#ccc', fontSize: 14 }}>
+              <h4 style={{ margin: '0 0 12px 0', color: 'var(--text-secondary)', fontSize: 14 }}>
                 📂 최근 사용한 데이터베이스
               </h4>
               <div style={{ maxHeight: 200, overflowY: 'auto' }}>
@@ -882,7 +887,7 @@ function DatabaseSettings() {
                         flex: 1,
                         fontSize: 11,
                         fontFamily: 'monospace',
-                        color: '#ccc',
+                        color: 'var(--text-secondary)',
                         wordBreak: 'break-all'
                       }}
                     >
@@ -893,7 +898,7 @@ function DatabaseSettings() {
                       disabled={loading}
                       style={{
                         background: '#4CAF50',
-                        color: '#fff',
+                        color: 'var(--text-primary)',
                         border: 'none',
                         padding: '4px 8px',
                         borderRadius: 3,
@@ -907,7 +912,7 @@ function DatabaseSettings() {
                       onClick={() => handleRemoveRecentDb(dbPath)}
                       style={{
                         background: '#f44336',
-                        color: '#fff',
+                        color: 'var(--text-primary)',
                         border: 'none',
                         padding: '4px 8px',
                         borderRadius: 3,
@@ -926,14 +931,14 @@ function DatabaseSettings() {
           {/* 로컬 데이터베이스 목록 */}
           {localDatabases.length > 0 && (
             <div style={{ marginTop: 24 }}>
-              <h4 style={{ margin: '0 0 12px 0', color: '#ccc', fontSize: 14 }}>
+              <h4 style={{ margin: '0 0 12px 0', color: 'var(--text-secondary)', fontSize: 14 }}>
                 💾 로컬 데이터베이스 관리
               </h4>
               <div style={{ maxHeight: 300, overflowY: 'auto' }}>
                 {localDatabases.map((db, index) => (
-                  <div 
+                  <div
                     key={index}
-                    style={{ 
+                    style={{
                       marginBottom: 12,
                       padding: 12,
                       background: '#2a2a2a',
@@ -943,14 +948,14 @@ function DatabaseSettings() {
                   >
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8 }}>
                       <div style={{ flex: 1 }}>
-                        <div style={{ fontSize: 13, fontWeight: 'bold', color: '#fff', marginBottom: 4 }}>
+                        <div style={{ fontSize: 13, fontWeight: 'bold', color: 'var(--text-primary)', marginBottom: 4 }}>
                           {db.displayName}
                         </div>
-                        <div style={{ fontSize: 11, color: '#888', fontFamily: 'monospace', marginBottom: 4 }}>
+                        <div style={{ fontSize: 11, color: 'var(--text-muted)', fontFamily: 'monospace', marginBottom: 4 }}>
                           {db.name}
                         </div>
                         <div style={{ fontSize: 11, color: '#666' }}>
-                          크기: {(db.size / 1024).toFixed(1)}KB | 
+                          크기: {(db.size / 1024).toFixed(1)}KB |
                           수정: {new Date(db.modified).toLocaleDateString('ko-KR')} {new Date(db.modified).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })}
                         </div>
                       </div>
@@ -961,7 +966,7 @@ function DatabaseSettings() {
                         disabled={loading}
                         style={{
                           background: '#4CAF50',
-                          color: '#fff',
+                          color: 'var(--text-primary)',
                           border: 'none',
                           padding: '6px 12px',
                           borderRadius: 4,
@@ -976,7 +981,7 @@ function DatabaseSettings() {
                         onClick={() => handleShowInFinder(db.path)}
                         style={{
                           background: '#2196F3',
-                          color: '#fff',
+                          color: 'var(--text-primary)',
                           border: 'none',
                           padding: '6px 12px',
                           borderRadius: 4,
@@ -991,7 +996,7 @@ function DatabaseSettings() {
                         onClick={() => handleDeleteLocalDb(db.path, db.displayName)}
                         style={{
                           background: '#f44336',
-                          color: '#fff',
+                          color: 'var(--text-primary)',
                           border: 'none',
                           padding: '6px 12px',
                           borderRadius: 4,
@@ -1223,18 +1228,18 @@ function Home() {
       id: Date.now(),
       name,
       filters: {
-        sortOptions,
-        relationFilter,
-        dateFilter,
-        subcardsOnlyFilter,
-        amountFilter,
-        cardTypeFilters,
-        completionFilter,
-        activateFilter,
-        durationFilter,
-        contentFilter,
-        createDateFilter,
-        projectFilter
+      sortOptions,
+      relationFilter,
+      dateFilter,
+      subcardsOnlyFilter,
+      amountFilter,
+      cardTypeFilters,
+      completionFilter,
+      activateFilter,
+      durationFilter,
+      contentFilter,
+      createDateFilter,
+      projectFilter
       }
     };
 
@@ -1471,16 +1476,16 @@ function Home() {
 
     switch (e.key) {
       case 'ArrowDown':
-        e.preventDefault();
-        setSourceSelectedIndex(prev =>
-          prev < filteredSourceCards.length - 1 ? prev + 1 : 0
-        );
+          e.preventDefault();
+          setSourceSelectedIndex(prev =>
+            prev < filteredSourceCards.length - 1 ? prev + 1 : 0
+          );
         break;
       case 'ArrowUp':
-        e.preventDefault();
-        setSourceSelectedIndex(prev =>
-          prev > 0 ? prev - 1 : filteredSourceCards.length - 1
-        );
+          e.preventDefault();
+          setSourceSelectedIndex(prev =>
+            prev > 0 ? prev - 1 : filteredSourceCards.length - 1
+          );
         break;
       case 'Enter':
         e.preventDefault();
@@ -1518,16 +1523,16 @@ function Home() {
 
     switch (e.key) {
       case 'ArrowDown':
-        e.preventDefault();
-        setTargetSelectedIndex(prev =>
-          prev < filteredTargetCards.length - 1 ? prev + 1 : 0
-        );
+          e.preventDefault();
+          setTargetSelectedIndex(prev =>
+            prev < filteredTargetCards.length - 1 ? prev + 1 : 0
+          );
         break;
       case 'ArrowUp':
-        e.preventDefault();
-        setTargetSelectedIndex(prev =>
-          prev > 0 ? prev - 1 : filteredTargetCards.length - 1
-        );
+          e.preventDefault();
+          setTargetSelectedIndex(prev =>
+            prev > 0 ? prev - 1 : filteredTargetCards.length - 1
+          );
         break;
       case 'Enter':
         e.preventDefault();
@@ -2565,7 +2570,7 @@ function Home() {
               border: 'none',
               cursor: 'pointer',
               fontSize: 16,
-              color: '#fff',
+              color: 'var(--text-primary)',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center'
@@ -2577,24 +2582,24 @@ function Home() {
           {!isLeftCollapsed && (
             <>
               <h3 style={{ margin: 0, flex: 1, color: '#fff' }}>Cards</h3>
-              <button
-                onClick={() => setShowFilterModal(true)}
-                style={{
-                  padding: '6px',
-                  fontSize: 14,
-                  background: '#333',
-                  color: '#ccc',
-                  border: '1px solid #555',
-                  borderRadius: 4,
-                  cursor: 'pointer',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center'
-                }}
-                title="필터링 옵션"
-              >
-                ⚙️
-              </button>
+                <button
+                  onClick={() => setShowFilterModal(true)}
+                  style={{
+                    padding: '6px',
+                    fontSize: 14,
+                    background: 'var(--panel)',
+                    color: 'var(--text-secondary)',
+                    border: '1px solid var(--border-dark)',
+                    borderRadius: 4,
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center'
+                  }}
+                  title="필터링 옵션"
+                >
+                  ⚙️
+                </button>
             </>
           )}
         </div>
@@ -2613,9 +2618,9 @@ function Home() {
               style={{
                 width: '100%',
                 padding: '8px 12px',
-                background: '#333',
-                color: '#fff',
-                border: '1px solid #555',
+                background: 'var(--panel)',
+                color: 'var(--text-primary)',
+                border: '1px solid var(--border-dark)',
                 borderRadius: 4,
                 fontSize: 14,
                 boxSizing: 'border-box'
@@ -2625,7 +2630,7 @@ function Home() {
               <div style={{
                 marginTop: 8,
                 fontSize: 12,
-                color: '#888',
+                color: 'var(--text-muted)',
                 display: 'flex',
                 justifyContent: 'space-between',
                 alignItems: 'center'
@@ -2636,7 +2641,7 @@ function Home() {
                   style={{
                     background: 'none',
                     border: 'none',
-                    color: '#888',
+                    color: 'var(--text-muted)',
                     cursor: 'pointer',
                     fontSize: 12
                   }}
@@ -2659,7 +2664,7 @@ function Home() {
           }}>
             <div style={{
               fontSize: 12,
-              color: '#4CAF50',
+              color: 'var(--success)',
               marginBottom: 4,
               fontWeight: 'bold'
             }}>
@@ -2667,7 +2672,7 @@ function Home() {
             </div>
             <div style={{
               fontSize: 13,
-              color: '#ccc',
+              color: 'var(--text-secondary)',
               marginBottom: 8,
               lineHeight: 1.4
             }}>
@@ -2676,7 +2681,7 @@ function Home() {
               {' → '}
               <span
                 style={{
-                  color: '#4CAF50',
+                  color: 'var(--success)',
                   fontWeight: 'bold',
                   cursor: 'pointer',
                   textDecoration: 'underline',
@@ -2700,7 +2705,7 @@ function Home() {
             </div>
             <div style={{
               fontSize: 11,
-              color: '#888',
+              color: 'var(--text-muted)',
               fontStyle: 'italic'
             }}>
               위 목표 카드를 향한 관계 체인의 카드들만 표시 중
@@ -2987,7 +2992,7 @@ function Home() {
                       }}
                       style={{
                         background: '#dc3545',
-                        color: '#fff',
+                        color: 'var(--text-primary)',
                         border: 'none',
                         borderRadius: 3,
                         padding: '2px 6px',
@@ -3021,7 +3026,7 @@ function Home() {
                         minWidth: 60,
                         background: 'transparent',
                         border: 'none',
-                        color: '#fff',
+                        color: 'var(--text-primary)',
                         fontWeight: 600,
                         fontSize: 14,
                         outline: 'none'
@@ -3047,7 +3052,7 @@ function Home() {
                         flex: 1,
                         background: 'transparent',
                         border: 'none',
-                        color: '#fff',
+                        color: 'var(--text-primary)',
                         fontSize: 14,
                         outline: 'none'
                       }}
@@ -3125,20 +3130,22 @@ function Home() {
 
             <label style={{display:'flex',alignItems:'center',gap:8}}>
               카드타입 ({cardTypes.length}개 로드됨)
-              <input
-                list="cardTypeOptions"
+              <select
                 className="editor-input"
-                value={cardTypeInput}
-                onChange={(e)=>setCardTypeInput(e.target.value)}
-                onBlur={saveCardType}
-                placeholder="카드타입을 입력하세요"
-                title={`사용 가능한 카드타입: ${cardTypes.map(ct => ct.cardtype_name).join(', ')}`}
-              />
-              <datalist id="cardTypeOptions">
+                value={cardDetail.cardtype ?? ''}
+                onChange={(e)=>{
+                  const newId = e.target.value ? Number(e.target.value) : null;
+                  if (newId !== null) {
+                    updateCardField('cardtype', newId);
+                  }
+                }}
+                style={{ flex: 1 }}
+              >
+                <option value="">선택</option>
                 {cardTypes.map((ct) => (
-                  <option key={ct.cardtype_id} value={ct.cardtype_name} />
+                  <option key={ct.cardtype_id} value={ct.cardtype_id}>{ct.cardtype_name}</option>
                 ))}
-              </datalist>
+              </select>
             </label>
 
             <label style={{display:'flex',alignItems:'center',gap:8}}>
@@ -3280,8 +3287,8 @@ function Home() {
             bottom: 20,
             left: '50%',
             transform: 'translateX(-50%)',
-            background: '#333',
-            color: '#fff',
+            background: 'var(--panel)',
+            color: 'var(--text-primary)',
             padding: '8px 16px',
             borderRadius: 6,
             zIndex: 9999,
@@ -3304,10 +3311,10 @@ function Home() {
               <button onClick={async()=>{
                 const newT=modalNewTitle.trim();
                 if(!newT) return;
-                await window.electron.ipcRenderer.invoke('update-card-title',{card_id:modalCardId,title:newT});
-                setShowTitleModal(false);
-                await loadCards();
-                showToast('제목 변경 완료');
+                    await window.electron.ipcRenderer.invoke('update-card-title',{card_id:modalCardId,title:newT});
+                    setShowTitleModal(false);
+                    await loadCards();
+                    showToast('제목 변경 완료');
               }}>저장</button>
             </div>
           </div>
@@ -3452,9 +3459,9 @@ function Home() {
               style={{
                 width: '100%',
                 minHeight: 300,
-                background: '#333',
-                color: '#fff',
-                border: '1px solid #555',
+                background: 'var(--panel)',
+                color: 'var(--text-primary)',
+                border: '1px solid var(--border-dark)',
                 borderRadius: 4,
                 padding: 8,
                 fontSize: 14,
@@ -3466,7 +3473,7 @@ function Home() {
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 16 }}>
               <button
                 onClick={() => setShowExportModal(false)}
-                style={{ padding: '8px 16px', background: '#666', color: '#fff', border: 'none', borderRadius: 4 }}
+                style={{ padding: '8px 16px', background: 'var(--text-disabled)', color: 'var(--text-primary)', border: 'none', borderRadius: 4 }}
               >
                 취소
               </button>
@@ -3480,7 +3487,7 @@ function Home() {
                     showToast('클립보드 복사 실패');
                   }
                 }}
-                style={{ padding: '8px 16px', background: '#0066cc', color: '#fff', border: 'none', borderRadius: 4 }}
+                style={{ padding: '8px 16px', background: '#0066cc', color: 'var(--text-primary)', border: 'none', borderRadius: 4 }}
               >
                 클립보드에 복사
               </button>
@@ -3547,9 +3554,9 @@ function Home() {
                 style={{
                   width: '100%',
                   minHeight: 200,
-                  background: '#333',
-                  color: '#fff',
-                  border: '1px solid #555',
+                  background: 'var(--panel)',
+                  color: 'var(--text-primary)',
+                  border: '1px solid var(--border-dark)',
                   borderRadius: 4,
                   padding: 8,
                   fontSize: 14,
@@ -3578,13 +3585,13 @@ function Home() {
                   });
                   showToast('설정이 기본값으로 초기화되었습니다');
                 }}
-                style={{ padding: '8px 16px', background: '#666', color: '#fff', border: 'none', borderRadius: 4 }}
+                style={{ padding: '8px 16px', background: 'var(--text-disabled)', color: 'var(--text-primary)', border: 'none', borderRadius: 4 }}
               >
                 기본값 복원
               </button>
               <button
                 onClick={() => setShowSettingsModal(false)}
-                style={{ padding: '8px 16px', background: '#0066cc', color: '#fff', border: 'none', borderRadius: 4 }}
+                style={{ padding: '8px 16px', background: '#0066cc', color: 'var(--text-primary)', border: 'none', borderRadius: 4 }}
               >
                 완료
               </button>
@@ -3622,9 +3629,9 @@ function Home() {
         >
           <div
             style={{
-              background: '#1e1e1e',
+              background: 'var(--bg-dark)',
               borderRadius: 8,
-              border: '1px solid #555',
+              border: '1px solid var(--border-dark)',
               padding: 24,
               maxWidth: 600,
               width: '90%',
@@ -3639,7 +3646,7 @@ function Home() {
                 style={{
                   background: 'none',
                   border: 'none',
-                  color: '#888',
+                  color: 'var(--text-muted)',
                   fontSize: 24,
                   cursor: 'pointer',
                   padding: 0,
@@ -3655,7 +3662,7 @@ function Home() {
             </div>
 
             <div style={{ marginBottom: 20 }}>
-              <p style={{ color: '#fff', fontSize: 16, lineHeight: 1.5 }}>
+              <p style={{ color: 'var(--text-primary)', fontSize: 16, lineHeight: 1.5 }}>
                 <strong>{conflictModal.field}</strong> 필드를 <strong>{conflictModal.value}</strong>로 변경하려고 했지만,
                 다음 before/after 관계 때문에 변경할 수 없습니다:
               </p>
@@ -3679,7 +3686,7 @@ function Home() {
                   <div style={{ color: '#ffd43b', fontSize: 14, marginBottom: 8 }}>
                     충돌 유형: {conflict.conflictType}
                   </div>
-                  <div style={{ color: '#fff', fontSize: 14 }}>
+                  <div style={{ color: 'var(--text-primary)', fontSize: 14 }}>
                     {conflict.message}
                   </div>
                 </div>
@@ -3691,7 +3698,7 @@ function Home() {
                 onClick={() => setConflictModal({ show: false, field: '', value: null, conflicts: [] })}
                 style={{
                   background: '#0066cc',
-                  color: '#fff',
+                  color: 'var(--text-primary)',
                   border: 'none',
                   borderRadius: 4,
                   padding: '12px 24px',
@@ -3704,7 +3711,7 @@ function Home() {
             </div>
 
             <div style={{ marginTop: 16, padding: 12, background: '#2a2a2a', borderRadius: 4, border: '1px solid #444' }}>
-              <p style={{ color: '#888', fontSize: 12, margin: 0, lineHeight: 1.4 }}>
+              <p style={{ color: 'var(--text-muted)', fontSize: 12, margin: 0, lineHeight: 1.4 }}>
                 💡 팁: before/after 관계에서는 앞선 카드의 날짜가 뒤따르는 카드의 날짜보다 늦을 수 없습니다.
                 관계를 먼저 수정하거나 다른 카드의 날짜를 조정해주세요.
               </p>
@@ -3738,7 +3745,7 @@ function Home() {
         >
           <div
             style={{
-              background: '#1e1e1e',
+              background: 'var(--bg-dark)',
               border: '1px solid #444',
               borderRadius: 8,
               padding: 24,
@@ -3751,27 +3758,27 @@ function Home() {
             onClick={(e) => e.stopPropagation()}
           >
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
-              <h3 style={{ margin: 0, color: '#fff', fontSize: 18 }}>필터링 및 정렬 옵션</h3>
-              <button
-                onClick={() => setShowFilterModal(false)}
-                style={{
-                  background: 'none',
-                  border: 'none',
-                  color: '#888',
-                  fontSize: 24,
-                  cursor: 'pointer',
-                  padding: 0
-                }}
-              >
-                ×
-              </button>
+              <h3 style={{ margin: 0, color: 'var(--text-primary)', fontSize: 18 }}>필터링 및 정렬 옵션</h3>
+                <button
+                  onClick={() => setShowFilterModal(false)}
+                  style={{
+                    background: 'none',
+                    border: 'none',
+                    color: 'var(--text-muted)',
+                    fontSize: 24,
+                    cursor: 'pointer',
+                    padding: 0
+                  }}
+                >
+                  ×
+                </button>
             </div>
 
             {/* 저장 성공 메시지 */}
             {saveSuccessMessage && (
               <div style={{
                 background: '#4CAF50',
-                color: '#fff',
+                color: 'var(--text-primary)',
                 padding: '8px 12px',
                 borderRadius: 4,
                 marginBottom: 16,
@@ -3804,13 +3811,13 @@ function Home() {
                 {/* 저장된 프리셋 탭들 */}
                 {filterPresets.map((preset, index) => (
                   <div key={preset.id} style={{ display: 'flex', alignItems: 'center' }}>
-                    <button
+                <button
                       onClick={() => setCurrentPresetTab(index)}
-                      style={{
+                  style={{
                         background: currentPresetTab === index ? '#333' : 'transparent',
                         border: 'none',
                         color: currentPresetTab === index ? '#fff' : '#aaa',
-                        padding: '8px 16px',
+                    padding: '8px 16px',
                         cursor: 'pointer',
                         borderBottom: currentPresetTab === index ? '2px solid #4CAF50' : 'none'
                       }}
@@ -3821,47 +3828,47 @@ function Home() {
                       <button
                         onClick={() => loadFilterPreset(preset)}
                         style={{
-                          background: '#4CAF50',
-                          border: 'none',
-                          color: '#fff',
+                    background: '#4CAF50',
+                    border: 'none',
+                          color: 'var(--text-primary)',
                           fontSize: 12,
-                          cursor: 'pointer',
+                    cursor: 'pointer',
                           padding: '2px 6px',
                           marginLeft: 4,
                           borderRadius: 3
-                        }}
+                  }}
                         title="이 프리셋 적용"
-                      >
+                >
                         로드
-                      </button>
+                </button>
                     )}
-                    <button
+                  <button
                       onClick={() => deleteFilterPreset(preset.id)}
-                      style={{
+                    style={{
                         background: 'none',
-                        border: 'none',
+                      border: 'none',
                         color: '#f44336',
                         fontSize: 12,
-                        cursor: 'pointer',
+                      cursor: 'pointer',
                         padding: '2px 4px',
                         marginLeft: 4
-                      }}
+                    }}
                       title="삭제"
-                    >
+                  >
                       ×
-                    </button>
+                  </button>
                   </div>
                 ))}
 
                 {/* 프리셋 추가 버튼 */}
-                <button
+                  <button
                   onClick={() => setShowPresetModal(true)}
-                  style={{
+                    style={{
                     background: '#555',
                     border: '1px dashed #777',
                     color: '#aaa',
                     padding: '6px 12px',
-                    cursor: 'pointer',
+                      cursor: 'pointer',
                     borderRadius: 4,
                     fontSize: 16,
                     marginLeft: 8,
@@ -3871,7 +3878,7 @@ function Home() {
                   onMouseEnter={(e) => {
                     e.currentTarget.style.background = '#666';
                     e.currentTarget.style.color = '#fff';
-                    e.currentTarget.style.borderColor = '#4CAF50';
+                    e.currentTarget.style.borderColor = 'var(--success)';
                   }}
                   onMouseLeave={(e) => {
                     e.currentTarget.style.background = '#555';
@@ -3880,15 +3887,15 @@ function Home() {
                   }}
                 >
                   +
-                </button>
+                  </button>
               </div>
             </div>
 
 
             {/* 1. 하위카드만 조회 */}
-            <div style={{ marginBottom: 24, border: '1px solid #555', borderRadius: 8, padding: 16 }}>
-              <h4 style={{ margin: '0 0 12px 0', color: '#ccc', fontSize: 16 }}>하위카드만 조회</h4>
-              <label style={{ display: 'flex', alignItems: 'center', gap: 8, color: '#fff', marginBottom: 8 }}>
+            <div style={{ marginBottom: 24, border: '1px solid var(--border-dark)', borderRadius: 8, padding: 16 }}>
+              <h4 style={{ margin: '0 0 12px 0', color: 'var(--text-secondary)', fontSize: 16 }}>하위카드만 조회</h4>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 8, color: 'var(--text-primary)', marginBottom: 8 }}>
                 <input
                   type="checkbox"
                   checked={subcardsOnlyFilter.enabled}
@@ -3901,7 +3908,7 @@ function Home() {
                 <div style={{ marginLeft: 24, display: 'flex', flexDirection: 'column', gap: 12 }}>
                   {/* 관계 타입 선택 */}
                   <div>
-                    <label style={{ display: 'block', color: '#ccc', marginBottom: 4, fontSize: 14 }}>
+                    <label style={{ display: 'block', color: 'var(--text-secondary)', marginBottom: 4, fontSize: 14 }}>
                       기준 관계 타입:
                     </label>
                     <select
@@ -3910,8 +3917,8 @@ function Home() {
                       style={{
                         width: '100%',
                         padding: '8px',
-                        background: '#333',
-                        border: '1px solid #555',
+                        background: 'var(--panel)',
+                        border: '1px solid var(--border-dark)',
                         borderRadius: 4,
                         color: '#fff'
                       }}
@@ -3927,7 +3934,7 @@ function Home() {
 
                   {/* 목표 카드 선택 */}
                   <div style={{ position: 'relative' }}>
-                    <label style={{ display: 'block', color: '#ccc', marginBottom: 4, fontSize: 14 }}>
+                    <label style={{ display: 'block', color: 'var(--text-secondary)', marginBottom: 4, fontSize: 14 }}>
                       목표 카드 이름:
                     </label>
                     <input
@@ -3952,10 +3959,10 @@ function Home() {
                       style={{
                         width: '100%',
                         padding: '8px',
-                        background: '#333',
+                        background: 'var(--panel)',
                         border: `1px solid ${subcardsDropdownVisible ? '#4CAF50' : '#555'}`,
                         borderRadius: subcardsDropdownVisible ? '4px 4px 0 0' : 4,
-                        color: '#fff',
+                        color: 'var(--text-primary)',
                         outline: 'none'
                       }}
                     />
@@ -3967,8 +3974,8 @@ function Home() {
                         top: '100%',
                         left: 0,
                         right: 0,
-                        background: '#333',
-                        border: '1px solid #4CAF50',
+                        background: 'var(--panel)',
+                        border: '1px solid var(--success)',
                         borderTop: 'none',
                         borderRadius: '0 0 4px 4px',
                         maxHeight: '200px',
@@ -3993,7 +4000,7 @@ function Home() {
                           >
                             <div style={{ fontWeight: 'bold' }}>{card.title}</div>
                             {card.content && (
-                              <div style={{ fontSize: '0.8em', color: '#888', marginTop: '2px' }}>
+                              <div style={{ fontSize: '0.8em', color: 'var(--text-muted)', marginTop: '2px' }}>
                                 {card.content.length > 50
                                   ? `${card.content.substring(0, 50)}...`
                                   : card.content
@@ -4009,7 +4016,7 @@ function Home() {
                   {/* 설명 텍스트 */}
                   <div style={{
                     fontSize: 12,
-                    color: '#888',
+                    color: 'var(--text-muted)',
                     padding: '8px',
                     background: '#1a1a1a',
                     borderRadius: 4,
@@ -4026,7 +4033,7 @@ function Home() {
 
             {/* 2. 카드타입 필터 */}
             <div style={{ marginBottom: 24 }}>
-              <h4 style={{ margin: '0 0 12px 0', color: '#ccc', fontSize: 16 }}>카드타입 필터</h4>
+              <h4 style={{ margin: '0 0 12px 0', color: 'var(--text-secondary)', fontSize: 16 }}>카드타입 필터</h4>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 8, maxHeight: 120, overflow: 'auto' }}>
                 {cardTypes.map((cardType) => (
                   <label key={cardType.cardtype_id} style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
@@ -4051,9 +4058,9 @@ function Home() {
                 style={{
                   marginTop: 8,
                   padding: '4px 8px',
-                  background: '#333',
-                  border: '1px solid #555',
-                  color: '#ccc',
+                  background: 'var(--panel)',
+                  border: '1px solid var(--border-dark)',
+                  color: 'var(--text-secondary)',
                   borderRadius: 4,
                   cursor: 'pointer',
                   fontSize: 12
@@ -4065,8 +4072,8 @@ function Home() {
 
             {/* 3. 관계 필터 */}
             <div style={{ marginBottom: 20 }}>
-              <h4 style={{ margin: '0 0 12px 0', color: '#ccc', fontSize: 16 }}>관계 필터</h4>
-              <label style={{ display: 'flex', alignItems: 'center', gap: 8, color: '#fff', marginBottom: 8 }}>
+              <h4 style={{ margin: '0 0 12px 0', color: 'var(--text-secondary)', fontSize: 16 }}>관계 필터</h4>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 8, color: 'var(--text-primary)', marginBottom: 8 }}>
                 <input
                   type="checkbox"
                   checked={relationFilter.enabled}
@@ -4077,7 +4084,7 @@ function Home() {
               </label>
               {relationFilter.enabled && (
                 <div style={{ marginLeft: 24 }}>
-                  <label style={{ display: 'flex', alignItems: 'center', gap: 8, color: '#ccc', marginBottom: 4 }}>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 8, color: 'var(--text-secondary)', marginBottom: 4 }}>
                     <input
                       type="radio"
                       name="relationFilter"
@@ -4101,8 +4108,8 @@ function Home() {
 
             {/* 4. 날짜 필터 */}
             <div style={{ marginBottom: 20 }}>
-              <h4 style={{ margin: '0 0 12px 0', color: '#ccc', fontSize: 16 }}>날짜 필터</h4>
-              <label style={{ display: 'flex', alignItems: 'center', gap: 8, color: '#fff', marginBottom: 8 }}>
+              <h4 style={{ margin: '0 0 12px 0', color: 'var(--text-secondary)', fontSize: 16 }}>날짜 필터</h4>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 8, color: 'var(--text-primary)', marginBottom: 8 }}>
                 <input
                   type="checkbox"
                   checked={dateFilter.enabled}
@@ -4113,7 +4120,7 @@ function Home() {
               </label>
               {dateFilter.enabled && (
                 <div style={{ marginLeft: 24 }}>
-                  <label style={{ display: 'flex', alignItems: 'center', gap: 8, color: '#ccc', marginBottom: 4 }}>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 8, color: 'var(--text-secondary)', marginBottom: 4 }}>
                     <input
                       type="radio"
                       name="dateFilter"
@@ -4137,8 +4144,8 @@ function Home() {
 
             {/* 5. 완료상태 필터 */}
             <div style={{ marginBottom: 20 }}>
-              <h4 style={{ margin: '0 0 12px 0', color: '#ccc', fontSize: 16 }}>완료상태 필터</h4>
-              <label style={{ display: 'flex', alignItems: 'center', gap: 8, color: '#fff', marginBottom: 8 }}>
+              <h4 style={{ margin: '0 0 12px 0', color: 'var(--text-secondary)', fontSize: 16 }}>완료상태 필터</h4>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 8, color: 'var(--text-primary)', marginBottom: 8 }}>
                 <input
                   type="checkbox"
                   checked={completionFilter?.enabled || false}
@@ -4149,7 +4156,7 @@ function Home() {
               </label>
               {completionFilter?.enabled && (
                 <div style={{ marginLeft: 24 }}>
-                  <label style={{ display: 'flex', alignItems: 'center', gap: 8, color: '#ccc', marginBottom: 4 }}>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 8, color: 'var(--text-secondary)', marginBottom: 4 }}>
                     <input
                       type="radio"
                       name="completionFilter"
@@ -4173,7 +4180,7 @@ function Home() {
 
             {/* 6. 금액 필터 */}
             <div style={{ marginBottom: 24 }}>
-              <h4 style={{ margin: '0 0 12px 0', color: '#ccc', fontSize: 16 }}>금액 필터</h4>
+              <h4 style={{ margin: '0 0 12px 0', color: 'var(--text-secondary)', fontSize: 16 }}>금액 필터</h4>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
                 <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
                   <input
@@ -4192,10 +4199,10 @@ function Home() {
                       onChange={(e) => setAmountFilter(prev => ({ ...prev, amount: e.target.value }))}
                       style={{
                         padding: '6px 8px',
-                        background: '#333',
-                        border: '1px solid #555',
+                        background: 'var(--panel)',
+                        border: '1px solid var(--border-dark)',
                         borderRadius: 4,
-                        color: '#fff',
+                        color: 'var(--text-primary)',
                         width: 120
                       }}
                     />
@@ -4204,8 +4211,8 @@ function Home() {
                       onChange={(e) => setAmountFilter(prev => ({ ...prev, operator: e.target.value as 'gte' | 'lte' }))}
                       style={{
                         padding: '6px 8px',
-                        background: '#333',
-                        border: '1px solid #555',
+                        background: 'var(--panel)',
+                        border: '1px solid var(--border-dark)',
                         borderRadius: 4,
                         color: '#fff'
                       }}
@@ -4220,8 +4227,8 @@ function Home() {
 
             {/* 7. 활성상태 필터 */}
             <div style={{ marginBottom: 20 }}>
-              <h4 style={{ margin: '0 0 12px 0', color: '#ccc', fontSize: 16 }}>활성상태 필터</h4>
-              <label style={{ display: 'flex', alignItems: 'center', gap: 8, color: '#fff', marginBottom: 8 }}>
+              <h4 style={{ margin: '0 0 12px 0', color: 'var(--text-secondary)', fontSize: 16 }}>활성상태 필터</h4>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 8, color: 'var(--text-primary)', marginBottom: 8 }}>
                 <input
                   type="checkbox"
                   checked={activateFilter?.enabled || false}
@@ -4232,7 +4239,7 @@ function Home() {
               </label>
               {activateFilter?.enabled && (
                 <div style={{ marginLeft: 24 }}>
-                  <label style={{ display: 'flex', alignItems: 'center', gap: 8, color: '#ccc', marginBottom: 4 }}>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 8, color: 'var(--text-secondary)', marginBottom: 4 }}>
                     <input
                       type="radio"
                       name="activateFilter"
@@ -4256,7 +4263,7 @@ function Home() {
 
             {/* 8. 소요시간 필터 */}
             <div style={{ marginBottom: 20 }}>
-              <h4 style={{ margin: '0 0 12px 0', color: '#ccc', fontSize: 16 }}>소요시간 필터</h4>
+              <h4 style={{ margin: '0 0 12px 0', color: 'var(--text-secondary)', fontSize: 16 }}>소요시간 필터</h4>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
                 <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
                   <input
@@ -4275,9 +4282,9 @@ function Home() {
                       onChange={(e) => setDurationFilter(prev => ({ ...prev, duration: e.target.value }))}
                       style={{
                         padding: '6px 8px',
-                        background: '#333',
-                        border: '1px solid #555',
-                        color: '#fff',
+                        background: 'var(--panel)',
+                        border: '1px solid var(--border-dark)',
+                        color: 'var(--text-primary)',
                         borderRadius: 4,
                         width: '100px'
                       }}
@@ -4287,8 +4294,8 @@ function Home() {
                       onChange={(e) => setDurationFilter(prev => ({ ...prev, operator: e.target.value as 'gte' | 'lte' }))}
                       style={{
                         padding: '6px 8px',
-                        background: '#333',
-                        border: '1px solid #555',
+                        background: 'var(--panel)',
+                        border: '1px solid var(--border-dark)',
                         borderRadius: 4,
                         color: '#fff'
                       }}
@@ -4303,7 +4310,7 @@ function Home() {
 
             {/* 9. 내용 필터 */}
             <div style={{ marginBottom: 20 }}>
-              <h4 style={{ margin: '0 0 12px 0', color: '#ccc', fontSize: 16 }}>내용 필터</h4>
+              <h4 style={{ margin: '0 0 12px 0', color: 'var(--text-secondary)', fontSize: 16 }}>내용 필터</h4>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
                 <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
                   <input
@@ -4322,9 +4329,9 @@ function Home() {
                       onChange={(e) => setContentFilter(prev => ({ ...prev, content: e.target.value }))}
                       style={{
                         padding: '6px 8px',
-                        background: '#333',
-                        border: '1px solid #555',
-                        color: '#fff',
+                        background: 'var(--panel)',
+                        border: '1px solid var(--border-dark)',
+                        color: 'var(--text-primary)',
                         borderRadius: 4,
                         width: '200px'
                       }}
@@ -4336,7 +4343,7 @@ function Home() {
 
             {/* 10. 생성일 필터 */}
             <div style={{ marginBottom: 20 }}>
-              <h4 style={{ margin: '0 0 12px 0', color: '#ccc', fontSize: 16 }}>생성일 필터</h4>
+              <h4 style={{ margin: '0 0 12px 0', color: 'var(--text-secondary)', fontSize: 16 }}>생성일 필터</h4>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
                 <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
                   <input
@@ -4356,9 +4363,9 @@ function Home() {
                         onChange={(e) => setCreateDateFilter(prev => ({ ...prev, startDate: e.target.value }))}
                         style={{
                           padding: '6px 8px',
-                          background: '#333',
-                          border: '1px solid #555',
-                          color: '#fff',
+                          background: 'var(--panel)',
+                          border: '1px solid var(--border-dark)',
+                          color: 'var(--text-primary)',
                           borderRadius: 4
                         }}
                       />
@@ -4371,9 +4378,9 @@ function Home() {
                         onChange={(e) => setCreateDateFilter(prev => ({ ...prev, endDate: e.target.value }))}
                         style={{
                           padding: '6px 8px',
-                          background: '#333',
-                          border: '1px solid #555',
-                          color: '#fff',
+                          background: 'var(--panel)',
+                          border: '1px solid var(--border-dark)',
+                          color: 'var(--text-primary)',
                           borderRadius: 4
                         }}
                       />
@@ -4385,7 +4392,7 @@ function Home() {
 
             {/* 11. 프로젝트 필터 */}
             <div style={{ marginBottom: 20 }}>
-              <h4 style={{ margin: '0 0 12px 0', color: '#ccc', fontSize: 16 }}>프로젝트 필터</h4>
+              <h4 style={{ margin: '0 0 12px 0', color: 'var(--text-secondary)', fontSize: 16 }}>프로젝트 필터</h4>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
                 <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
                   <input
@@ -4429,7 +4436,7 @@ function Home() {
 
             {/* 12. 정렬 옵션 */}
             <div style={{ marginBottom: 24 }}>
-              <h4 style={{ margin: '0 0 12px 0', color: '#ccc', fontSize: 16 }}>정렬 옵션</h4>
+              <h4 style={{ margin: '0 0 12px 0', color: 'var(--text-secondary)', fontSize: 16 }}>정렬 옵션</h4>
 
               {/* 보유관계 갯수 정렬 */}
               <div style={{ marginBottom: 16 }}>
@@ -4455,9 +4462,9 @@ function Home() {
                         }))}
                         style={{
                           padding: '6px 8px',
-                          background: '#333',
-                          border: '1px solid #555',
-                          color: '#fff',
+                          background: 'var(--panel)',
+                          border: '1px solid var(--border-dark)',
+                          color: 'var(--text-primary)',
                           borderRadius: 4,
                           fontSize: 13
                         }}
@@ -4526,8 +4533,8 @@ function Home() {
                       }))}
                       style={{
                         padding: '6px 8px',
-                        background: '#333',
-                        border: '1px solid #555',
+                        background: 'var(--panel)',
+                        border: '1px solid var(--border-dark)',
                         borderRadius: 4,
                         color: '#fff'
                       }}
@@ -4568,7 +4575,7 @@ function Home() {
                   padding: '8px 16px',
                   background: '#444',
                   border: '1px solid #666',
-                  color: '#ccc',
+                  color: 'var(--text-secondary)',
                   borderRadius: 4,
                   cursor: 'pointer'
                 }}
@@ -4581,7 +4588,7 @@ function Home() {
                   padding: '8px 16px',
                   background: '#555',
                   border: '1px solid #777',
-                  color: '#fff',
+                  color: 'var(--text-primary)',
                   borderRadius: 4,
                   cursor: 'pointer'
                 }}
@@ -4602,7 +4609,7 @@ function Home() {
             left: 0,
             width: '100%',
             height: '100%',
-            background: 'rgba(0,0,0,0.8)',
+            background: 'var(--bg-overlay)',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
@@ -4615,7 +4622,7 @@ function Home() {
         >
           <div
             style={{
-              background: '#1e1e1e',
+              background: 'var(--bg-dark)',
               border: '1px solid #444',
               borderRadius: 8,
               padding: 24,
@@ -4639,10 +4646,10 @@ function Home() {
                 style={{
                   width: '100%',
                   padding: '8px 12px',
-                  background: '#333',
-                  border: '1px solid #555',
+                  background: 'var(--panel)',
+                  border: '1px solid var(--border-dark)',
                   borderRadius: 4,
-                  color: '#fff',
+                  color: 'var(--text-primary)',
                   fontSize: 14
                 }}
                 autoFocus
@@ -4670,7 +4677,7 @@ function Home() {
                   background: '#555',
                   border: 'none',
                   borderRadius: 4,
-                  color: '#fff',
+                  color: 'var(--text-primary)',
                   cursor: 'pointer'
                 }}
               >
@@ -4690,7 +4697,7 @@ function Home() {
                   background: presetName.trim() ? '#4CAF50' : '#666',
                   border: 'none',
                   borderRadius: 4,
-                  color: '#fff',
+                  color: 'var(--text-primary)',
                   cursor: presetName.trim() ? 'pointer' : 'not-allowed'
                 }}
               >
@@ -5006,7 +5013,7 @@ function TodoItem({
             height: 24,
             border: 'none',
             background: '#ff4757',
-            color: 'white',
+            color: 'var(--text-primary)',
             borderRadius: '50%',
             cursor: 'pointer',
             display: 'flex',
@@ -5028,7 +5035,7 @@ function TodoItem({
   );
 }
 
-// 고급 그래프 뷰 컴포넌트 (React Force Graph 기반)
+// 고급 그래프 뷰 컴포넌트 (graph view.tsx 기반)
 function GraphView({
   cards,
   relations,
@@ -5050,994 +5057,1734 @@ function GraphView({
   onDeleteRelation?: (relationId: number) => Promise<void>,
   onRefresh?: () => Promise<void>
 }) {
+  // graph view.tsx의 Circle과 Arrow 인터페이스에 맞게 변환
+  interface Circle {
+      id: string;
+    x: number;
+    y: number;
+    radius: number;
+      color: string;
+    name: string;
+    value: number;
+    rank: number;
+    level: number;
+  }
+
+  interface Arrow {
+    id: number;
+    from: string;
+    to: string;
+  }
+
+  // 모노크롬 테마: 모든 노드를 흰색으로
+  const COLORS = ['#FFFFFF', '#FFFFFF', '#FFFFFF', '#FFFFFF', '#FFFFFF', '#FFFFFF', '#FFFFFF', '#FFFFFF'];
+
+  // cards를 Circle로, relations를 Arrow로 변환
+  const [circles, setCircles] = useState<Circle[]>([]);
+  const [arrows, setArrows] = useState<Arrow[]>([]);
+
+  const [draggedCircleId, setDraggedCircleId] = useState<string | null>(null);
+  const dragOffset = useRef({ x: 0, y: 0 });
+  const justFinishedDrawing = useRef(false);
+
+  const [arrowMode, setArrowMode] = useState(false);
+  const [selectedCircleForArrow, setSelectedCircleForArrow] = useState<string | null>(null);
+
+  const [editingCircleId, setEditingCircleId] = useState<string | null>(null);
+  const [editingName, setEditingName] = useState('');
+
+  const [focusedCircleId, setFocusedCircleId] = useState<string | null>(null);
+
+  // Cmd/Ctrl + 드래그로 화살표 그리기
+  const [drawingArrow, setDrawingArrow] = useState<{ fromId: string; x: number; y: number } | null>(null);
+
   const [selectedRelationType, setSelectedRelationType] = useState<string>('');
   const [searchTerm, setSearchTerm] = useState<string>('');
+  const [controlPanelOpen, setControlPanelOpen] = useState(true);
+  const [detailPanelOpen, setDetailPanelOpen] = useState(true);
 
-  // 개선된 그래프 데이터 구조
-  const [graphData, setGraphData] = useState<{
-    nodes: Array<{
-      id: string;
-      name: string;
-      importance: number;
-      val: number; // 노드 크기
-      color: string;
-      group: number;
-      fx: number; // X 좌표
-      fy: number; // Y 좌표
-    }>;
-    links: Array<{
-      source: string;
-      target: string;
-      value: number; // 링크 굵기
-      color: string;
-      label?: string;
-    }>;
-  }>({ nodes: [], links: [] });
+  // 줌/패닝 상태
+  const [zoom, setZoom] = useState(1);
+  const [pan, setPan] = useState({ x: 0, y: 0 });
+  const [isPanning, setIsPanning] = useState(false);
+  const [isSpacePressed, setIsSpacePressed] = useState(false);
+  const panStart = useRef({ x: 0, y: 0 });
 
-  // CRUD 관련 상태
-  const [selectedNode, setSelectedNode] = useState<any>(null);
-  const [selectedLink, setSelectedLink] = useState<any>(null);
-  const [editingNode, setEditingNode] = useState<{ id: string; title: string } | null>(null);
-  const [isCreatingRelation, setIsCreatingRelation] = useState(false);
-  const [relationSource, setRelationSource] = useState<string>('');
-  const [highlightNodes, setHighlightNodes] = useState<Set<string>>(new Set());
-  const [highlightLinks, setHighlightLinks] = useState<Set<string>>(new Set());
+  const getCircleById = (id: string) => circles.find((c) => c.id === id);
 
-  // 그래프 설정
-  const graphWidth = 1000;
-  const graphHeight = 600;
-
-  // importance 계산 함수 (재귀적)
-  const calculateImportance = (
-    nodeId: string,
-    relationTypeId: string,
-    memo: Map<string, number> = new Map()
-  ): number => {
-    // 이미 계산된 경우 memoization 사용
-    if (memo.has(nodeId)) {
-      return memo.get(nodeId)!;
-    }
-
-    // 현재 노드의 depth-1 자식 노드들 찾기
-    const childRelations = relations.filter(rel =>
-      rel.source === nodeId && rel.relationtype_id === relationTypeId
-    );
-
-    const childNodes = childRelations.map(rel => rel.target);
-    const childCount = childNodes.length;
-
-    // 자식 노드들의 importance 합 계산
-    let childrenImportanceSum = 0;
-    for (const childId of childNodes) {
-      childrenImportanceSum += calculateImportance(childId, relationTypeId, memo);
-    }
-
-    const importance = childCount + childrenImportanceSum;
-    memo.set(nodeId, importance);
-
-    return importance;
+  // 화면 좌표 → 그래프 좌표
+  const screenToWorld = (screenX: number, screenY: number) => {
+      return {
+      x: (screenX - pan.x) / zoom,
+      y: (screenY - pan.y) / zoom
+    };
   };
 
-  // 개선된 그래프 데이터 생성
-  const generateGraphData = () => {
-    if (!selectedRelationType) return;
+  const calculateArrowPath = (from: Circle, to: Circle) => {
+    const dx = to.x - from.x;
+    const dy = to.y - from.y;
+    const angle = Math.atan2(dy, dx);
 
-    const relationType = relationTypes.find(rt => rt.typename === selectedRelationType);
-    if (!relationType) return;
+    // 화살표 시작점 (from 원의 가장자리)
+    const startX = from.x + Math.cos(angle) * from.radius;
+    const startY = from.y + Math.sin(angle) * from.radius;
 
-    // 모든 노드의 importance 계산
-    const nodesWithImportance = cards.map(card => {
-      const importance = calculateImportance(card.id, relationType.relationtype_id);
+    // 화살표 끝점 (to 원의 가장자리)
+    const endX = to.x - Math.cos(angle) * to.radius;
+    const endY = to.y - Math.sin(angle) * to.radius;
 
-      return {
-        id: card.id,
-        name: card.title,
-        importance,
-        val: Math.max(5, importance * 3 + 5), // 노드 크기 (최소 5)
-        color: getNodeColor(importance),
-        group: Math.floor(importance / 2) + 1, // 그룹 분류
-        fx: 0, // X 위치는 나중에 계산
-        fy: 0  // Y 위치는 importance에 따라 결정
+    return { startX, startY, endX, endY, angle };
+  };
+
+  const createArrowhead = (x: number, y: number, angle: number) => {
+    const size = 12;
+    const angle1 = angle + Math.PI * 0.8;
+    const angle2 = angle - Math.PI * 0.8;
+
+    const x1 = x + Math.cos(angle1) * size;
+    const y1 = y + Math.sin(angle1) * size;
+    const x2 = x + Math.cos(angle2) * size;
+    const y2 = y + Math.sin(angle2) * size;
+
+    return `M ${x} ${y} L ${x1} ${y1} M ${x} ${y} L ${x2} ${y2}`;
+  };
+
+  // 연결된 그룹을 찾는 함수 (Union-Find 사용)
+  const findConnectedGroups = (circlesList: Circle[], arrowsList: Arrow[]): Map<string, string[]> => {
+    const parent = new Map<string, string>();
+
+    // 초기화: 각 노드의 부모는 자기 자신
+    circlesList.forEach(circle => {
+      parent.set(circle.id, circle.id);
+    });
+
+    // Find 함수 (경로 압축 포함)
+    const find = (id: string): string => {
+      if (parent.get(id) !== id) {
+        parent.set(id, find(parent.get(id)!));
+      }
+      return parent.get(id)!;
+    };
+
+    // Union 함수
+    const union = (id1: string, id2: string) => {
+      const root1 = find(id1);
+      const root2 = find(id2);
+      if (root1 !== root2) {
+        parent.set(root2, root1);
+      }
+    };
+
+    // 화살표로 연결된 노드들을 합침 (무방향으로 처리)
+    arrowsList.forEach(arrow => {
+      union(arrow.from, arrow.to);
+    });
+
+    // 그룹별로 노드들을 모음
+    const groups = new Map<string, string[]>();
+    circlesList.forEach(circle => {
+      const root = find(circle.id);
+      if (!groups.has(root)) {
+        groups.set(root, []);
+      }
+      groups.get(root)!.push(circle.id);
+    });
+
+    return groups;
+  };
+
+  // 노드값 계산 함수 (연결된 그룹별로 계산)
+  const calculateNodeValues = (circlesList: Circle[], arrowsList: Arrow[]): Circle[] => {
+    // 연결된 그룹 찾기
+    const groups = findConnectedGroups(circlesList, arrowsList);
+
+    const circlesWithValues = circlesList.map(circle => ({
+      ...circle,
+      x: circle.x ?? 0,
+      y: circle.y ?? 0,
+      radius: circle.radius ?? 55
+    }));
+
+    // 각 그룹별로 독립적으로 value 계산
+    groups.forEach((groupIds) => {
+      const valueCache = new Map<string, number>();
+
+      const calculateValue = (nodeId: string, visited: Set<string> = new Set()): number => {
+        // 순환 참조 방지
+        if (visited.has(nodeId)) return 0;
+
+        // 이미 계산된 값이 있으면 반환
+        if (valueCache.has(nodeId)) {
+          return valueCache.get(nodeId)!;
+        }
+
+        // 해당 노드에서 나가는 화살표들을 찾음
+        const outgoingArrows = arrowsList.filter(arrow => arrow.from === nodeId);
+
+        // 나가는 화살표가 없으면 리프 노드 (값 = 0)
+        if (outgoingArrows.length === 0) {
+          valueCache.set(nodeId, 0);
+          return 0;
+        }
+
+        // 중요도 = 해당 노드의 위에 위치한 노드의 갯수
+        // = count(깊이가 1인 노드) + sum(깊이가 1인 노드들의 값)
+        // 깊이 1인 노드들의 개수
+        const count = outgoingArrows.length;
+
+        // 깊이 1인 노드들의 값의 합을 재귀적으로 계산
+        const newVisited = new Set(visited);
+        newVisited.add(nodeId);
+
+        const sum = outgoingArrows.reduce((acc, arrow) => {
+          return acc + calculateValue(arrow.to, newVisited);
+        }, 0);
+
+        const value = count + sum;
+        valueCache.set(nodeId, value);
+        return value;
       };
+
+      // 그룹 내의 모든 노드에 대해 값 계산
+      groupIds.forEach(circleId => {
+        const circle = circlesWithValues.find(c => c.id === circleId);
+        if (circle) {
+          circle.value = calculateValue(circleId);
+        }
+      });
     });
 
-    // importance가 0인 노드들 제외 (관계가 없는 노드)
-    const activeNodes = nodesWithImportance.filter(node =>
-      node.importance > 0 ||
-      relations.some(rel => rel.target === node.id && rel.relationtype_id === relationType.relationtype_id)
-    );
+    // 그룹별로 rank 계산 후 레벨 계산
+    const withRanks = calculateRanks(circlesWithValues, groups);
+    return calculateLevels(withRanks, arrowsList);
+  };
 
-    // Y축 위치 계산 (importance 값에 따라)
-    const maxImportance = Math.max(...activeNodes.map(n => n.importance));
-    const yScale = (graphHeight - 60) / Math.max(maxImportance, 1);
+  // 레벨 계산 함수 (화살표 구조에서의 depth)
+  const calculateLevels = (circlesList: Circle[], arrowsList: Arrow[]): Circle[] => {
+    const result = circlesList.map(circle => ({
+      ...circle,
+      level: 0,
+      x: circle.x ?? 0,
+      y: circle.y ?? 0,
+      radius: circle.radius ?? 55
+    }));
+    const levelMap = new Map<string, number>();
 
-    // X축 위치 계산 (importance 별로 그룹화하여 분산)
-    const importanceGroups = new Map<number, any[]>();
-    activeNodes.forEach(node => {
-      const imp = node.importance;
-      if (!importanceGroups.has(imp)) {
-        importanceGroups.set(imp, []);
+    // 들어오는 화살표가 없는 노드들을 루트로 설정 (레벨 0)
+    const hasIncoming = new Set(arrowsList.map(a => a.to));
+    const roots = circlesList.filter(c => !hasIncoming.has(c.id)).map(c => c.id);
+
+    // BFS로 레벨 계산
+    const queue: string[] = [];
+    roots.forEach(id => {
+      levelMap.set(id, 0);
+      queue.push(id);
+    });
+
+    while (queue.length > 0) {
+      const currentId = queue.shift()!;
+      const currentLevel = levelMap.get(currentId)!;
+
+      // 현재 노드에서 나가는 화살표들 찾기
+      const outgoing = arrowsList.filter(a => a.from === currentId);
+
+      outgoing.forEach(arrow => {
+        const targetId = arrow.to;
+        const existingLevel = levelMap.get(targetId);
+
+        // 더 깊은 레벨로 업데이트 (여러 경로가 있을 수 있음)
+        if (existingLevel === undefined || existingLevel < currentLevel + 1) {
+          levelMap.set(targetId, currentLevel + 1);
+          queue.push(targetId);
+        }
+      });
+    }
+
+    // 결과에 레벨 적용
+    result.forEach(circle => {
+      circle.level = levelMap.get(circle.id) ?? 0;
+    });
+
+    return result;
+  };
+
+  // rank 계산 함수 (그룹별로 독립적으로 계산, 스포츠 순위 방식)
+  const calculateRanks = (circlesList: Circle[], groups: Map<string, string[]>): Circle[] => {
+    const result = circlesList.map(circle => ({
+      ...circle,
+      x: circle.x ?? 0,
+      y: circle.y ?? 0,
+      radius: circle.radius ?? 55
+    }));
+
+    // 각 그룹별로 독립적으로 rank 계산
+    groups.forEach((groupIds) => {
+      // 그룹에 속한 circle들만 필터링
+      const groupCircles = result.filter(c => groupIds.includes(c.id));
+
+      // value를 기준으로 정렬 (오름차순)
+      const sortedValues = [...groupCircles].sort((a, b) => a.value - b.value);
+
+      // 각 value에 대한 rank 매핑 생성
+      const valueToRank = new Map<number, number>();
+      let currentRank = 1;
+
+      for (let i = 0; i < sortedValues.length; i++) {
+        const currentValue = sortedValues[i].value;
+
+        // 이미 rank가 부여된 값이 아니면 새로 부여
+        if (!valueToRank.has(currentValue)) {
+          valueToRank.set(currentValue, currentRank);
+        }
+
+        // 다음 원소가 다른 값이면 rank를 현재 인덱스+2로 업데이트
+        if (i < sortedValues.length - 1 && sortedValues[i + 1].value !== currentValue) {
+          currentRank = i + 2; // 1-based index이므로 i+2
+        }
       }
-      importanceGroups.get(imp)!.push(node);
+
+      // 그룹 내 각 circle에 rank 부여
+      groupCircles.forEach(circle => {
+        const circleInResult = result.find(c => c.id === circle.id);
+        if (circleInResult) {
+          circleInResult.rank = valueToRank.get(circle.value) || 1;
+        }
+      });
     });
 
-    // 각 그룹 내에서 X 위치 분산
-    const xScale = graphWidth - 80;
-    activeNodes.forEach(node => {
-      const group = importanceGroups.get(node.importance)!;
-      const groupIndex = group.indexOf(node);
-      const groupSize = group.length;
+    return result;
+  };
 
-      // 그룹 내에서 균등 분배
-      if (groupSize === 1) {
-        node.fx = xScale / 2;
-      } else {
-        node.fx = (xScale * groupIndex) / (groupSize - 1);
-      }
+  // cards와 relations를 Circle과 Arrow로 변환
+  useEffect(() => {
+    // cards를 Circle로 변환 (기존 위치 유지)
+    console.log('[GraphView] cards changed:', cards.length, cards);
 
-      // Y 위치는 importance에 따라 (아래로 갈수록 증가)
-      node.fy = 20 + (node.importance * yScale);
-    });
+    if (cards.length === 0) {
+      console.log('[GraphView] No cards, clearing circles');
+      setCircles([]);
+      return;
+    }
 
-    // 링크 데이터 생성
-    const links = relations
-      .filter(rel => rel.relationtype_id === relationType.relationtype_id)
-      .filter(rel =>
-        activeNodes.some(n => n.id === rel.source) &&
-        activeNodes.some(n => n.id === rel.target)
-      )
-      .map(rel => {
-        const sourceNode = activeNodes.find(n => n.id === rel.source);
-        const targetNode = activeNodes.find(n => n.id === rel.target);
+    setCircles(prevCircles => {
+      const newCircles: Circle[] = cards.map((card, index) => {
+        const existingCircle = prevCircles.find(c => c.id === card.id);
         return {
-        source: rel.source,
-          target: rel.target,
-          value: Math.max(1, (sourceNode?.importance || 1) + (targetNode?.importance || 1)) / 4,
-          color: getLinkColor(rel.relationtype_id),
-          label: relationType.typename,
+          id: card.id,
+          x: existingCircle?.x || card.x || Math.random() * (window.innerWidth - 200) + 100,
+          y: existingCircle?.y || card.y || Math.random() * (window.innerHeight - 200) + 100,
+          radius: 55,
+          color: existingCircle?.color || COLORS[index % COLORS.length],
+          name: card.title || '',
+          value: 0,
+          rank: 1,
+          level: 0,
         };
       });
+      console.log('[GraphView] newCircles created:', newCircles.length, newCircles);
+      return newCircles;
+    });
+  }, [cards]);
 
-    setGraphData({ nodes: activeNodes, links });
-  };
-
-  // 노드 색상 결정 함수
-  const getNodeColor = (importance: number): string => {
-    if (importance === 0) return '#cccccc';
-    if (importance <= 2) return '#4fc3f7';
-    if (importance <= 5) return '#29b6f6';
-    if (importance <= 10) return '#0288d1';
-    return '#01579b';
-  };
-
-  // 링크 색상 결정 함수
-  const getLinkColor = (relationTypeId: number): string => {
-    const colors = ['#ff9800', '#4caf50', '#f44336', '#9c27b0', '#2196f3'];
-    return colors[relationTypeId % colors.length] || '#666666';
-  };
-
-  // relation type 변경시 그래프 데이터 재생성
+  // circles 상태 변경 디버깅
   useEffect(() => {
-    generateGraphData();
-  }, [selectedRelationType, cards, relations, relationTypes]);
+    console.log('[GraphView] circles state changed:', circles.length, circles);
+  }, [circles]);
+
+  // relations를 Arrow로 변환 (선택된 관계 타입만 필터링)
+  useEffect(() => {
+    let filteredRelations = relations;
+    // selectedRelationType이 있고, relationTypes가 있을 때만 필터링
+    if (selectedRelationType && relationTypes.length > 0) {
+      const relationType = relationTypes.find(rt => rt.typename === selectedRelationType);
+      if (relationType) {
+        filteredRelations = relations.filter(rel => rel.relationtype_id === relationType.relationtype_id);
+      }
+    }
+
+    const newArrows: Arrow[] = filteredRelations.map((rel, index) => ({
+      id: rel.relation_id || index,
+      from: rel.source,
+      to: rel.target,
+    }));
+
+    setArrows(newArrows);
+
+    // arrows가 변경되면 노드값 재계산
+    setCircles(prevCircles => {
+      if (prevCircles.length > 0) {
+        return calculateNodeValues(prevCircles, newArrows);
+      }
+      return prevCircles;
+    });
+  }, [relations, selectedRelationType, relationTypes]);
 
   // 초기 relation type 설정
   useEffect(() => {
     if (relationTypes.length > 0 && !selectedRelationType) {
       setSelectedRelationType(relationTypes[0].typename);
     }
-  }, [relationTypes]);
+  }, [relationTypes, selectedRelationType]);
 
-  // 검색 및 하이라이트 기능
-  const handleSearch = (searchValue: string) => {
-    setSearchTerm(searchValue);
+  // 계층형 레이아웃 및 물리 엔진 (Layered Layout Strategy)
+  useEffect(() => {
+    if (circles.length === 0) return;
+    if (draggedCircleId !== null) return; // 드래그 중에는 자동 배치 일시 중단
 
-    if (!searchValue.trim()) {
-      setHighlightNodes(new Set());
-      setHighlightLinks(new Set());
+    let animationFrameId: number;
+    const startY = 100; // 시작 여백
+    const verticalSpacing = 150; // 수직 간격
+    const horizontalSpacing = 200; // 수평 간격
+    const springForce = 0.05; // Spring Force 계수 (Lerp 비율)
+    const repulsionCoefficient = 1000; // 척력 계수
+    const minDistance = 120; // 최소 안전 거리 (반지름 55 * 2 + 여유)
+
+    const physicsStep = () => {
+      setCircles(prevCircles => {
+        if (prevCircles.length === 0) return prevCircles;
+        if (draggedCircleId !== null) return prevCircles; // 드래그 중에는 업데이트 안 함
+
+        // Rank별로 그룹화
+        const rankGroups = new Map<number, Circle[]>();
+        prevCircles.forEach(circle => {
+          if (!rankGroups.has(circle.rank)) {
+            rankGroups.set(circle.rank, []);
+          }
+          rankGroups.get(circle.rank)!.push(circle);
+        });
+
+        // 1. 목표 위치 계산 (Rank 기반 배치)
+        const targetPositions = new Map<string, { targetX: number; targetY: number }>();
+        
+        rankGroups.forEach((groupCircles, rank) => {
+          // 수직 배치: targetY = 시작_여백 + (rank * 수직_간격)
+          const targetY = startY + (rank * verticalSpacing);
+          
+          // 수평 배치: 동일 rank 내에서 중앙 기준 분산
+          groupCircles.forEach((circle, index) => {
+            const totalNodes = groupCircles.length;
+            // targetX = 화면_중앙 + (index - (해당_rank_총_노드수 - 1) / 2) * 수평_간격
+            const targetX = (window.innerWidth / 2) + (index - (totalNodes - 1) / 2) * horizontalSpacing;
+            targetPositions.set(circle.id, { targetX, targetY });
+          });
+        });
+
+        // 2. Spring Force: 목표 지점으로 부드럽게 이동 (Lerp)
+        let updated = prevCircles.map(circle => {
+          if (circle.id === draggedCircleId) return circle; // 드래그 중인 노드는 제외
+          
+          const target = targetPositions.get(circle.id);
+          if (!target) return circle;
+
+          // Lerp를 사용한 부드러운 이동
+          const dx = target.targetX - circle.x;
+          const dy = target.targetY - circle.y;
+          
+          return {
+            ...circle,
+            x: circle.x + dx * springForce,
+            y: circle.y + dy * springForce,
+          };
+        });
+
+        // 3. Repulsion Force: 노드 간 척력
+        for (let i = 0; i < updated.length; i++) {
+          if (updated[i].id === draggedCircleId) continue; // 드래그 중인 노드는 제외
+          
+          let fx = 0;
+          let fy = 0;
+
+          for (let j = 0; j < updated.length; j++) {
+            if (i === j) continue;
+            if (updated[j].id === draggedCircleId) continue; // 드래그 중인 노드는 제외
+
+            const dx = updated[j].x - updated[i].x;
+            const dy = updated[j].y - updated[i].y;
+            const distance = Math.sqrt(dx * dx + dy * dy);
+
+            if (distance > 0 && distance < minDistance) {
+              // 힘의_세기 = (minDistance - d) / d * 척력_계수
+              const force = (minDistance - distance) / distance * repulsionCoefficient;
+              const normalizedDx = dx / distance;
+              const normalizedDy = dy / distance;
+              
+              fx -= normalizedDx * force;
+              fy -= normalizedDy * force;
+            }
+          }
+
+          // 힘을 적용 (작은 스텝으로 부드럽게)
+          updated[i] = {
+            ...updated[i],
+            x: updated[i].x + fx * 0.01,
+            y: updated[i].y + fy * 0.01,
+          };
+        }
+
+        return updated;
+      });
+
+      animationFrameId = requestAnimationFrame(physicsStep);
+    };
+
+    animationFrameId = requestAnimationFrame(physicsStep);
+
+    return () => {
+      if (animationFrameId) {
+        cancelAnimationFrame(animationFrameId);
+      }
+    };
+  }, [circles.length, draggedCircleId]); // circles.length와 draggedCircleId가 변경될 때 재시작
+
+  // 키보드 단축키
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Command/Ctrl + N으로 원 추가
+      if ((e.metaKey || e.ctrlKey) && e.key === 'n') {
+        e.preventDefault();
+        addCircle();
+      }
+      // Command/Ctrl + B로 화살표 모드 토글
+      if ((e.metaKey || e.ctrlKey) && e.key === 'b') {
+        e.preventDefault();
+        setArrowMode(prev => !prev);
+        setSelectedCircleForArrow(null);
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [circles, arrows, arrowMode]);
+
+  // graph view.tsx의 핵심 함수들
+  const handleDoubleClick = (circleId: string) => {
+    const circle = circles.find((c) => c.id === circleId);
+    if (!circle) return;
+
+    setEditingCircleId(circleId);
+    setEditingName(circle.name);
+  };
+
+  const handleNameChange = (value: string) => {
+    setEditingName(value);
+  };
+
+  const handleNameSubmit = async () => {
+    if (editingCircleId !== null) {
+      const circle = circles.find(c => c.id === editingCircleId);
+      if (circle && onUpdateCard) {
+        await onUpdateCard(editingCircleId, 'title', editingName);
+        setEditingCircleId(null);
+        setEditingName('');
+        if (onRefresh) await onRefresh();
+      }
+    }
+  };
+
+  const handleCircleClick = (circleId: string) => {
+    if (!arrowMode) return;
+
+    if (selectedCircleForArrow === null) {
+      setSelectedCircleForArrow(circleId);
+    } else {
+      if (selectedCircleForArrow !== circleId) {
+        const relationType = relationTypes.find(rt => rt.typename === selectedRelationType);
+        if (relationType && onCreateRelation) {
+          onCreateRelation(selectedCircleForArrow, circleId, relationType.relationtype_id).then(() => {
+            if (onRefresh) onRefresh();
+          });
+        }
+        setSelectedCircleForArrow(null);
+      }
+    }
+  };
+
+  const handleMouseDown = (e: React.MouseEvent, circleId: string) => {
+    if (isSpacePressed) {
+      setIsPanning(true);
+      panStart.current = { x: e.clientX, y: e.clientY };
       return;
     }
 
-    const matchingNodes = graphData.nodes
-      .filter(node =>
-        node.name.toLowerCase().includes(searchValue.toLowerCase())
-      );
+    if (e.metaKey || e.ctrlKey) {
+      const circle = circles.find((c) => c.id === circleId);
+      if (!circle) return;
 
-    const nodeIds = new Set(matchingNodes.map(n => n.id));
-    const linkedLinks = graphData.links
-      .filter(link =>
-        nodeIds.has(link.source) || nodeIds.has(link.target)
-      );
+      const worldPos = screenToWorld(e.clientX, e.clientY);
+      setDrawingArrow({
+        fromId: circleId,
+        x: worldPos.x,
+        y: worldPos.y,
+      });
+      return;
+    }
 
-    setHighlightNodes(nodeIds);
-    setHighlightLinks(new Set(linkedLinks.map(l => `${l.source}-${l.target}`)));
+    if (arrowMode) {
+      handleCircleClick(circleId);
+      return;
+    }
+
+    const circle = circles.find((c) => c.id === circleId);
+    if (!circle) return;
+
+    setDraggedCircleId(circleId);
+    const worldPos = screenToWorld(e.clientX, e.clientY);
+    dragOffset.current = {
+      x: worldPos.x - circle.x,
+      y: worldPos.y - circle.y,
+    };
   };
 
-  // React Force Graph 이벤트 핸들러들
-  const handleNodeClick = (node: any) => {
-    setSelectedNode(node);
+  const handleMouseMove = (e: React.MouseEvent) => {
+    if (isPanning) {
+      const dx = e.clientX - panStart.current.x;
+      const dy = e.clientY - panStart.current.y;
+      setPan((prev) => ({ x: prev.x + dx, y: prev.y + dy }));
+      panStart.current = { x: e.clientX, y: e.clientY };
+      return;
+    }
 
-    // 연결된 노드들과 링크들 하이라이트
-    const connectedNodes = new Set<string>();
-    const connectedLinks = new Set<string>();
+    if (drawingArrow) {
+      const worldPos = screenToWorld(e.clientX, e.clientY);
+      setDrawingArrow({
+        ...drawingArrow,
+        x: worldPos.x,
+        y: worldPos.y,
+      });
+      return;
+    }
 
-    connectedNodes.add(node.id);
+    if (draggedCircleId === null) return;
 
-    graphData.links.forEach(link => {
-      if (link.source === node.id || link.target === node.id) {
-        connectedNodes.add(typeof link.source === 'string' ? link.source : (link.source as any).id);
-        connectedNodes.add(typeof link.target === 'string' ? link.target : (link.target as any).id);
-        connectedLinks.add(`${link.source}-${link.target}`);
+    const worldPos = screenToWorld(e.clientX, e.clientY);
+    const newX = worldPos.x - dragOffset.current.x;
+    const newY = worldPos.y - dragOffset.current.y;
+
+    setCircles((prevCircles) =>
+      prevCircles.map((circle) =>
+        circle.id === draggedCircleId
+          ? { ...circle, x: newX, y: newY }
+          : circle
+      )
+    );
+  };
+
+  const handleMouseUp = (e: React.MouseEvent) => {
+    if (isPanning) {
+      setIsPanning(false);
+    }
+
+    if (drawingArrow) {
+      const worldPos = screenToWorld(e.clientX, e.clientY);
+      const targetCircle = circles.find((circle) => {
+        const dx = worldPos.x - circle.x;
+        const dy = worldPos.y - circle.y;
+        const distance = Math.sqrt(dx * dx + dy * dy);
+        return distance <= circle.radius;
+      });
+
+      if (targetCircle && targetCircle.id !== drawingArrow.fromId) {
+        const relationType = relationTypes.find(rt => rt.typename === selectedRelationType);
+        if (relationType && onCreateRelation) {
+          onCreateRelation(drawingArrow.fromId, targetCircle.id, relationType.relationtype_id).then(() => {
+            if (onRefresh) onRefresh();
+          });
+        }
       }
-    });
 
-    setHighlightNodes(connectedNodes);
-    setHighlightLinks(connectedLinks);
+      setDrawingArrow(null);
+      return;
+    }
+
+    setDraggedCircleId(null);
   };
 
-  const handleNodeRightClick = (event: MouseEvent, node: any) => {
-    event.preventDefault();
-    setSelectedNode(node);
+  const handleCircleRightClick = async (e: React.MouseEvent, circleId: string) => {
+    e.preventDefault();
 
-    // 컨텍스트 메뉴 표시를 위한 로직 (필요시 구현)
-    if (window.confirm(`${node.name} 카드를 편집하시겠습니까?`)) {
-      setEditingNode({ id: node.id, title: node.name });
+    if (onDeleteCard && window.confirm('이 카드를 삭제하시겠습니까?')) {
+      await onDeleteCard(circleId);
+      if (onRefresh) await onRefresh();
     }
   };
 
-  const handleNodeDoubleClick = (node: any) => {
-    setEditingNode({ id: node.id, title: node.name });
+  const handleArrowRightClick = async (e: React.MouseEvent, arrowId: number) => {
+    e.preventDefault();
+    e.stopPropagation();
+
+    if (onDeleteRelation && window.confirm('이 관계를 삭제하시겠습니까?')) {
+      await onDeleteRelation(arrowId);
+      if (onRefresh) await onRefresh();
+    }
   };
 
+  const handleBackgroundClick = (e: React.MouseEvent) => {
+    if (justFinishedDrawing.current) return;
+    if (drawingArrow !== null || draggedCircleId !== null) return;
+    if (!e.metaKey && !e.ctrlKey) return;
+
+    const target = e.target as HTMLElement | SVGElement;
+    const tagName = target.tagName?.toLowerCase();
+
+    if (tagName === 'svg' || e.target === e.currentTarget) {
+      const worldPos = screenToWorld(e.clientX, e.clientY);
+      // Electron 환경에서는 prompt() 대신 간단한 입력 방식 사용
+      const title = window.prompt ? window.prompt('카드 제목을 입력하세요:') : null;
+      if (title && onCreateCard) {
+        onCreateCard(title).then(() => {
+          if (onRefresh) onRefresh();
+        });
+      }
+    }
+  };
+
+  // 여백 더블클릭으로 새 노드(카드) 생성
+  const handleBackgroundDoubleClick = async (e: React.MouseEvent) => {
+    // 원이나 화살표를 더블클릭한 경우는 무시
+    const target = e.target as HTMLElement | SVGElement;
+    const tagName = target.tagName?.toLowerCase();
+    
+    // 원(motion.div)이나 화살표(line, path)를 클릭한 경우 무시
+    if (tagName === 'div' || tagName === 'line' || tagName === 'path' || tagName === 'g') {
+      // 원의 경우는 이미 handleDoubleClick에서 처리됨
+      if (target.closest('[style*="borderRadius"]')) return;
+      // 화살표의 경우도 무시
+      if (target.closest('svg > g')) return;
+    }
+
+    // 배경 영역을 더블클릭한 경우에만 새 노드 생성
+    if (tagName === 'svg' || e.target === e.currentTarget || (tagName === 'div' && !target.closest('[style*="borderRadius"]'))) {
+      e.stopPropagation();
+      const worldPos = screenToWorld(e.clientX, e.clientY);
+      
+      // 카드 제목 입력
+      const title = window.prompt ? window.prompt('카드 제목을 입력하세요:') : null;
+      if (!title) return;
+
+      if (onCreateCard) {
+        await onCreateCard(title);
+        
+        // 카드 생성 후 위치 업데이트
+        // onRefresh를 통해 cards가 업데이트된 후, 새로 생성된 카드를 찾아 위치 설정
+        if (onRefresh) {
+          await onRefresh();
+          
+          // 새로 생성된 카드 찾기 (가장 최근에 생성된 카드)
+          // cards 배열이 업데이트되면 가장 마지막 카드가 새로 생성된 카드일 가능성이 높음
+          // 또는 카드 생성 API가 생성된 카드 ID를 반환하도록 수정 필요
+          // 일단 간단하게 마지막 카드의 위치를 업데이트
+          setTimeout(async () => {
+            if (onRefresh) {
+              await onRefresh();
+              // cards 배열이 업데이트되면 circles도 자동으로 업데이트됨
+              // 하지만 위치는 별도로 업데이트해야 함
+              // onUpdateCard를 통해 x, y 필드를 업데이트
+              // 하지만 카드 ID를 알 수 없으므로, 일단 이 부분은 나중에 개선
+            }
+          }, 200);
+        }
+      }
+    }
+  };
+
+  const handleBackgroundMouseDown = (e: React.MouseEvent) => {
+    if (isSpacePressed) {
+      setIsPanning(true);
+      panStart.current = { x: e.clientX, y: e.clientY };
+    }
+  };
+
+  const handleWheel = (e: React.WheelEvent) => {
+    e.preventDefault();
+    const delta = e.deltaY > 0 ? 0.9 : 1.1;
+    const newZoom = Math.max(0.2, Math.min(4, zoom * delta));
+
+    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    const mouseX = e.clientX - rect.left;
+    const mouseY = e.clientY - rect.top;
+
+    const dx = mouseX - pan.x;
+    const dy = mouseY - pan.y;
+
+    setPan({
+      x: mouseX - dx * (newZoom / zoom),
+      y: mouseY - dy * (newZoom / zoom)
+    });
+
+    setZoom(newZoom);
+  };
+
+  // 스페이스바로 패닝 토글
+  useEffect(() => {
+    const down = (event: KeyboardEvent) => {
+      if (event.code === 'Space') {
+        event.preventDefault();
+        setIsSpacePressed(true);
+      }
+    };
+    const up = (event: KeyboardEvent) => {
+      if (event.code === 'Space') {
+        setIsSpacePressed(false);
+        setIsPanning(false);
+      }
+    };
+    window.addEventListener('keydown', down);
+    window.addEventListener('keyup', up);
+    return () => {
+      window.removeEventListener('keydown', down);
+      window.removeEventListener('keyup', up);
+    };
+  }, []);
+
+  const addCircle = async (x?: number, y?: number) => {
+    // Electron 환경에서는 prompt() 대신 간단한 입력 방식 사용
+    const title = window.prompt ? window.prompt('카드 제목을 입력하세요:') : null;
+    if (!title) return;
+
+    if (onCreateCard) {
+      await onCreateCard(title);
+      if (onRefresh) await onRefresh();
+    }
+    
+    // 새로 생성된 카드의 위치를 설정 (x, y가 제공된 경우)
+    // 카드가 생성되면 onRefresh가 호출되어 circles가 업데이트되므로
+    // 위치는 카드 생성 후 별도로 업데이트해야 함
+    if (x !== undefined && y !== undefined && onUpdateCard) {
+      // 카드 생성 후 위치 업데이트는 onRefresh 콜백에서 처리
+      // 또는 카드 생성 API가 위치를 받도록 수정 필요
+    }
+  };
+
+  // 그래프 영역의 크기 계산 (circles의 위치를 기반으로)
+  const graphBounds = circles.length > 0 ? circles.reduce((acc, circle) => {
+    const minX = Math.min(acc.minX, circle.x - circle.radius);
+    const maxX = Math.max(acc.maxX, circle.x + circle.radius);
+    const minY = Math.min(acc.minY, circle.y - circle.radius);
+    const maxY = Math.max(acc.maxY, circle.y + circle.radius);
+    return { minX, maxX, minY, maxY };
+  }, { minX: Infinity, maxX: -Infinity, minY: Infinity, maxY: -Infinity }) : null;
+
+  const graphWidth = graphBounds ? Math.max(2000, graphBounds.maxX - graphBounds.minX + 400) : 2000;
+  const graphHeight = graphBounds ? Math.max(2000, graphBounds.maxY - graphBounds.minY + 400) : 2000;
+  const graphOffsetX = graphBounds ? Math.min(0, graphBounds.minX - 200) : 0;
+  const graphOffsetY = graphBounds ? Math.min(0, graphBounds.minY - 200) : 0;
+  const graphTransform = {
+    transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`,
+    transformOrigin: '0 0'
+  };
 
     return (
-    <div style={{ height: '100%', display: 'flex', flexDirection: 'column', padding: 8 }}>
-      {/* 고급 컨트롤 헤더 */}
-      <div style={{
-        display: 'flex',
-        justifyContent: 'space-between',
-        alignItems: 'center',
-        marginBottom: 12,
-        flexShrink: 0,
-        gap: 16
-      }}>
-        {/* 왼쪽 컨트롤 */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          <label htmlFor="relation-type-select" style={{ fontSize: 14, fontWeight: 600 }}>
-            관계 타입:
-          </label>
-          <select
-            id="relation-type-select"
-            value={selectedRelationType}
-            onChange={(e) => setSelectedRelationType(e.target.value)}
+    <div
             style={{
-              padding: '8px 12px',
-              borderRadius: 6,
-              border: '1px solid #ddd',
-              fontSize: 14,
-              background: '#fff'
-            }}
-          >
-            <option value="">선택하세요</option>
-            {relationTypes.map(rt => (
-              <option key={rt.relationtype_id} value={rt.typename}>
-                {rt.typename}
-              </option>
-            ))}
-          </select>
-        </div>
-
-        {/* 가운데 검색 */}
-        <div style={{ flex: 1, maxWidth: 300 }}>
-          <input
-            type="text"
-            placeholder="노드 검색..."
-            value={searchTerm}
-            onChange={(e) => handleSearch(e.target.value)}
-            style={{
-              width: '100%',
-              padding: '8px 12px',
-              borderRadius: 6,
-              border: '1px solid #ddd',
-              fontSize: 14
-            }}
-          />
-      </div>
-
-        {/* 오른쪽 컨트롤 */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <button
-            onClick={() => {
-              setHighlightNodes(new Set());
-              setHighlightLinks(new Set());
-              setSelectedNode(null);
-            }}
-            style={{
-              padding: '8px 16px',
-              borderRadius: 6,
-              border: '1px solid #ddd',
-              background: '#fff',
-              cursor: 'pointer',
-              fontSize: 12,
-              fontWeight: 500
-            }}
-          >
-            🔄 초기화
-          </button>
-
-          <div style={{
-            padding: '4px 8px',
-            fontSize: 11,
-            color: '#666',
-            background: '#f8f9fa',
-            borderRadius: 4,
-            border: '1px solid #e9ecef'
-          }}>
-            개선된 그래프뷰
-          </div>
-        </div>
-      </div>
-
-      {/* 메인 영역 */}
-      <div style={{
-        flex: 1,
-        display: 'flex',
-        gap: 12,
-        overflow: 'hidden'
-      }}>
-        {/* 그래프 영역 */}
-        <div style={{
-          flex: selectedNode ? '1 1 70%' : '1 1 100%',
-        border: '1px solid #ddd',
-        borderRadius: 8,
+        width: '100%',
+        height: '100%',
+        minHeight: '400px',
         overflow: 'hidden',
-          background: '#fafafa',
+        position: 'relative',
+        backgroundColor: '#000000', // 모노크롬 테마: 검정 배경
+        transition: 'all 0.3s',
+        cursor: isSpacePressed ? (isPanning ? 'grabbing' : 'grab') : (isPanning ? 'grabbing' : 'default')
+      }}
+      onMouseMove={handleMouseMove}
+      onMouseUp={handleMouseUp}
+      onMouseLeave={handleMouseUp}
+      onMouseDown={handleBackgroundMouseDown}
+      onClick={handleBackgroundClick}
+      onDoubleClick={handleBackgroundDoubleClick}
+      onWheel={handleWheel}
+    >
+      {/* 스크롤 가능한 그래프 컨테이너 */}
+      <div
+            style={{
           position: 'relative',
-          transition: 'flex 0.3s ease'
-      }}>
-        {!selectedRelationType ? (
+          width: `${graphWidth}px`,
+          height: `${graphHeight}px`,
+          minWidth: '100%',
+          minHeight: '100%'
+        }}
+      >
+      {/* 디버깅 정보 (개발 모드) */}
+      {process.env.NODE_ENV === 'development' && (
           <div style={{
-            height: '100%',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            color: '#666',
-            fontSize: 16,
-            flexDirection: 'column',
-            gap: 16
-          }}>
-            <div style={{ fontSize: 24, marginBottom: 8 }}>🔗</div>
-            <div>관계 타입을 선택해주세요</div>
-            <div style={{ fontSize: 14, color: '#999' }}>
-              선택 후 고급 그래프 시각화를 경험해보세요
-            </div>
+          position: 'absolute',
+          top: 10,
+          left: 10,
+          zIndex: 1000,
+          backgroundColor: 'rgba(0, 0, 0, 0.7)',
+          color: 'var(--text-primary)',
+          padding: '8px 12px',
+          borderRadius: '4px',
+          fontSize: '12px',
+          fontFamily: 'monospace'
+        }}>
+          <div>Cards: {cards.length}</div>
+          <div>Circles: {circles.length}</div>
+          <div>Arrows: {arrows.length}</div>
+          <div>Relations: {relations.length}</div>
           </div>
-        ) : (
-          <div style={{ width: '100%', height: '100%', position: 'relative' }}>
-          <svg
-            width="100%"
-            height="100%"
-            viewBox={`0 0 ${graphWidth} ${graphHeight}`}
-              style={{
-                background: 'white',
-                cursor: 'default'
-              }}
-              onClick={() => {
-                setHighlightNodes(new Set());
-                setHighlightLinks(new Set());
-                setSelectedNode(null);
-              }}
-          >
-            {/* 좌표축 그리기 */}
-            {/* Y축 (왼쪽) */}
-            <line
-              x1={60}
-              y1={20}
-              x2={60}
-              y2={graphHeight - 40}
-              stroke="#333"
-              strokeWidth="2"
-            />
+      )}
 
-            {/* X축 (아래) */}
-            <line
-              x1={60}
-              y1={graphHeight - 40}
-              x2={graphWidth - 20}
-              y2={graphHeight - 40}
-              stroke="#333"
-              strokeWidth="2"
-            />
+      {/* 빈 상태 메시지 */}
+      {cards.length === 0 && (
+      <div style={{
+          position: 'absolute',
+          top: '50%',
+          left: '50%',
+          transform: 'translate(-50%, -50%)',
+          color: 'var(--text-primary)',
+          textAlign: 'center',
+          zIndex: 10
+        }}>
+          <div style={{ fontSize: '24px', marginBottom: '16px' }}>📊</div>
+          <div style={{ fontSize: '18px', marginBottom: '8px' }}>카드가 없습니다</div>
+          <div style={{ fontSize: '14px', opacity: 0.7 }}>카드를 추가하면 그래프로 표시됩니다</div>
+            </div>
+      )}
+      {/* SVG for arrows - positioned behind circles */}
+      <svg style={{ position: 'absolute', top: 0, left: 0, width: `${graphWidth}px`, height: `${graphHeight}px`, zIndex: 1 }}>
+        <defs>
+          <filter id="glow">
+            <feGaussianBlur stdDeviation="2" result="coloredBlur"/>
+            <feMerge>
+              <feMergeNode in="coloredBlur"/>
+              <feMergeNode in="SourceGraphic"/>
+            </feMerge>
+          </filter>
+        </defs>
+        <g transform={`translate(${pan.x}, ${pan.y}) scale(${zoom})`}>
+        {arrows.map((arrow, index) => {
+          const fromCircle = getCircleById(arrow.from);
+          const toCircle = getCircleById(arrow.to);
 
-            {/* Y축 눈금 및 라벨 */}
-            {graphData.nodes.length > 0 && (() => {
-              const maxImportance = Math.max(...graphData.nodes.map(n => n.importance));
-              const ticks = [];
-              for (let i = 0; i <= maxImportance; i++) {
-                const y = 20 + (i * (graphHeight - 60) / Math.max(maxImportance, 1));
-                ticks.push(
-                  <g key={i}>
-                    <line
-                      x1={55}
-                      y1={y}
-                      x2={60}
-                      y2={y}
-                      stroke="#333"
-                      strokeWidth="1"
-                    />
-                    <text
-                      x={50}
-                      y={y + 4}
-                      textAnchor="end"
-                      fontSize="12"
-                      fill="#666"
-                    >
-                      {i}
-                    </text>
+          if (!fromCircle || !toCircle) return null;
+
+          const { startX, startY, endX, endY, angle } = calculateArrowPath(fromCircle, toCircle);
+          const arrowhead = createArrowhead(endX, endY, angle);
+
+          return (
+            <g
+              key={arrow.id}
+              onContextMenu={(e) => handleArrowRightClick(e, arrow.id)}
+            >
+              {/* 투명한 넓은 영역으로 클릭 영역 확대 */}
+            <line
+                x1={startX}
+                y1={startY}
+                x2={endX}
+                y2={endY}
+                stroke="transparent"
+                strokeWidth="30"
+                style={{ cursor: 'pointer' }}
+                pointerEvents="all"
+              />
+              <motion.line
+                x1={startX}
+                y1={startY}
+                x2={endX}
+                y2={endY}
+                stroke="rgba(255, 255, 255, 0.5)"
+                strokeWidth="3"
+                initial={{ pathLength: 0, opacity: 0 }}
+                animate={{ pathLength: 1, opacity: 1 }}
+                transition={{ duration: 1, delay: index * 0.1, ease: "easeInOut" }}
+                pointerEvents="none"
+              />
+              <motion.path
+                d={arrowhead}
+                stroke="rgba(255, 255, 255, 0.5)"
+                strokeWidth="3"
+                fill="none"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                transition={{ duration: 0.5, delay: index * 0.1 + 0.5, ease: "easeInOut" }}
+                pointerEvents="none"
+              />
                   </g>
                 );
-              }
-              return ticks;
-            })()}
-
-            {/* 그리드 라인 */}
-            {graphData.nodes.length > 0 && (() => {
-              const maxImportance = Math.max(...graphData.nodes.map(n => n.importance));
-              const gridLines = [];
-              for (let i = 0; i <= maxImportance; i++) {
-                const y = 20 + (i * (graphHeight - 60) / Math.max(maxImportance, 1));
-                gridLines.push(
-                  <line
-                    key={i}
-                    x1={60}
-                    y1={y}
-                    x2={graphWidth - 20}
-                    y2={y}
-                    stroke="#e0e0e0"
-                    strokeWidth="1"
-                    strokeDasharray="2,2"
-                  />
-                );
-              }
-              return gridLines;
-            })()}
-
-            {/* 링크 그리기 */}
-            {graphData.links.map((link, index) => {
-              const sourceNode = graphData.nodes.find(n => n.id === link.source);
-              const targetNode = graphData.nodes.find(n => n.id === link.target);
-
-              if (!sourceNode || !targetNode) return null;
-
-              const isHighlighted = highlightLinks.has(`${link.source}-${link.target}`);
-
-              return (
-                <line
-                  key={index}
-                  x1={60 + sourceNode.fx}
-                  y1={sourceNode.fy}
-                  x2={60 + targetNode.fx}
-                  y2={targetNode.fy}
-                  stroke={isHighlighted ? link.color : '#ccc'}
-                  strokeWidth={isHighlighted ? Math.max(2, link.value) : 1}
-                  opacity={isHighlighted ? 0.8 : 0.4}
-                />
-              );
             })}
 
-            {/* 노드 그리기 */}
-            {graphData.nodes.map(node => {
-              const isHighlighted = highlightNodes.has(node.id);
-              const isSelected = selectedNode?.id === node.id;
+        {/* Cmd/Ctrl 드래그 중인 점선 화살표 */}
+        {drawingArrow && (() => {
+          const fromCircle = getCircleById(drawingArrow.fromId);
+          if (!fromCircle) return null;
+
+          const dx = drawingArrow.x - fromCircle.x;
+          const dy = drawingArrow.y - fromCircle.y;
+          const angle = Math.atan2(dy, dx);
+
+          const startX = fromCircle.x + Math.cos(angle) * fromCircle.radius;
+          const startY = fromCircle.y + Math.sin(angle) * fromCircle.radius;
 
               return (
-              <g key={node.id}>
-                <circle
-                    cx={60 + node.fx}
-                    cy={node.fy}
-                    r={node.val}
-                    fill={isSelected ? "#ff6b6b" : (isHighlighted ? node.color : '#ddd')}
-                  stroke="white"
-                  strokeWidth="2"
-                    style={{ cursor: 'pointer' }}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleNodeClick(node);
-                    }}
-                    onDoubleClick={() => handleNodeDoubleClick(node)}
-                />
-                <text
-                    x={60 + node.fx}
-                    y={node.fy - node.val - 8}
-                  textAnchor="middle"
-                  fontSize="11"
-                  fill="#333"
-                  fontWeight="500"
-                    style={{ pointerEvents: 'none' }}
-                >
-                    {node.name.length > 12 ? node.name.substring(0, 12) + '...' : node.name}
-                </text>
-                <text
-                    x={60 + node.fx}
-                    y={node.fy + node.val + 15}
-                  textAnchor="middle"
-                  fontSize="10"
-                  fill="#666"
-                    style={{ pointerEvents: 'none' }}
-                >
-                  {node.importance}
-                </text>
+            <g>
+                <line
+                x1={startX}
+                y1={startY}
+                x2={drawingArrow.x}
+                y2={drawingArrow.y}
+                stroke="rgba(255, 255, 255, 0.7)"
+                strokeWidth="3"
+                strokeDasharray="8,5"
+                pointerEvents="none"
+              />
+              <path
+                d={createArrowhead(drawingArrow.x, drawingArrow.y, angle)}
+                stroke="rgba(255, 255, 255, 0.7)"
+                strokeWidth="3"
+                fill="none"
+                pointerEvents="none"
+              />
               </g>
               );
-            })}
+        })()}
 
-            {/* 축 라벨 */}
-            <text
-              x={30}
-              y={graphHeight / 2}
-              textAnchor="middle"
-              fontSize="14"
-              fill="#333"
-              transform={`rotate(-90, 30, ${graphHeight / 2})`}
-            >
-              Importance
-            </text>
+        {/* Focused circle indicator (dashed border) */}
+        {focusedCircleId !== null && (() => {
+          const focusedCircle = circles.find(c => c.id === focusedCircleId);
+          if (!focusedCircle) return null;
 
-            <text
-              x={graphWidth / 2}
-              y={graphHeight - 10}
-              textAnchor="middle"
-              fontSize="14"
-              fill="#333"
-            >
-              Nodes
-            </text>
+          const borderRadius = focusedCircle.radius + 8;
+              return (
+            <motion.circle
+              key={`focus-${focusedCircleId}`}
+              cx={focusedCircle.x}
+              cy={focusedCircle.y}
+              r={borderRadius}
+              stroke="#fff"
+              strokeWidth="4"
+              strokeDasharray="12 8"
+              fill="none"
+              initial={{ opacity: 0, scale: 0.8 }}
+              animate={{ opacity: 1, scale: 1 }}
+              transition={{ duration: 0.3, ease: "easeInOut" }}
+            />
+          );
+        })()}
+        </g>
           </svg>
 
-            {/* 왼쪽 상단 간단한 선택 표시 */}
-            {selectedNode && (
-              <div
+      {/* Circles - positioned above arrows */}
+      <div style={{ position: 'absolute', top: 0, left: 0, width: `${graphWidth}px`, height: `${graphHeight}px`, zIndex: 2, pointerEvents: 'none', ...graphTransform }}>
+        {circles.filter(c => !isNaN(c.x) && !isNaN(c.y) && !isNaN(c.radius)).map((circle, index) => (
+          <motion.div
+            key={circle.id}
                 style={{
                   position: 'absolute',
-                  top: 16,
-                  left: 16,
-                  background: 'rgba(33, 37, 41, 0.9)',
-                  color: '#fff',
-                  padding: '6px 12px',
-                  borderRadius: 6,
-                  fontSize: 12,
-                  fontWeight: 500,
-                  zIndex: 100,
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 6
-                }}
-              >
-                🎯 선택됨: {selectedNode.name}
-              </div>
-            )}
-
-            {/* 편집 모달 */}
-            {editingNode && (
-              <div
-                style={{
-                  position: 'fixed',
-                  top: 0,
-                  left: 0,
-                  right: 0,
-                  bottom: 0,
-                  background: 'rgba(0,0,0,0.5)',
+              left: circle.x - circle.radius,
+              top: circle.y - circle.radius,
+              width: circle.radius * 2,
+              height: circle.radius * 2,
+              borderRadius: '50%',
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
-                  zIndex: 1001
-                }}
-                onClick={(e) => {
-                  if (e.target === e.currentTarget) {
-                    setEditingNode(null);
+              backgroundColor: circle.color,
+              pointerEvents: 'auto',
+              border: '3px solid rgba(255, 255, 255, 0.4)',
+              boxShadow: '0 8px 24px rgba(0, 0, 0, 0.3)',
+              cursor: arrowMode ? 'pointer' : 'grab',
+            }}
+            initial={{ scale: 0, opacity: 0 }}
+            animate={{
+              scale: 1,
+              opacity: 1,
+            }}
+            transition={{
+              scale: { duration: 0.5, delay: index * 0.1, ease: "easeOut" },
+              opacity: { duration: 0.5, delay: index * 0.1, ease: "easeOut" },
+            }}
+            whileHover={
+              draggedCircleId === null
+                ? {
+                    scale: 1.05,
+                    boxShadow: '0 12px 32px rgba(0, 0, 0, 0.4)',
+                    transition: { duration: 0.3, ease: "easeInOut" }
                   }
+                : {}
+            }
+            onMouseDown={(e) => handleMouseDown(e, circle.id)}
+            onDoubleClick={() => handleDoubleClick(circle.id)}
+            onContextMenu={(e) => handleCircleRightClick(e, circle.id)}
+                onClick={(e) => {
+              e.stopPropagation();
+              if (!arrowMode && !draggedCircleId) {
+                setFocusedCircleId(circle.id);
+              }
+            }}
+          >
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '2px' }}>
+              {editingCircleId === circle.id ? (
+                  <input
+                  value={editingName}
+                  onChange={(e) => handleNameChange(e.target.value)}
+                  onBlur={handleNameSubmit}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                      handleNameSubmit();
+                      } else if (e.key === 'Escape') {
+                      setEditingCircleId(null);
+                      setEditingName('');
+                    }
+                  }}
+                  autoFocus
+                  style={{
+                    width: '80px',
+                    height: '32px',
+                    textAlign: 'center',
+                    fontSize: '14px',
+                    padding: '4px',
+                    backgroundColor: '#1e1e1e',
+                    color: 'var(--text-primary)',
+                    border: '1px solid #444',
+                    borderRadius: '4px'
+                  }}
+                  onClick={(e) => e.stopPropagation()}
+                  onMouseDown={(e) => e.stopPropagation()}
+                />
+              ) : (
+                <>
+                  <span style={{ color: 'var(--text-primary)', opacity: 0.8, fontSize: '12px', fontFamily: 'monospace', letterSpacing: '0.1em', userSelect: 'none' }}>
+                    #{circle.rank}
+                  </span>
+                  <span style={{ color: 'var(--text-primary)', fontSize: '24px', fontWeight: 'bold', fontFamily: 'sans-serif', letterSpacing: '0.05em', userSelect: 'none' }}>
+                    {circle.value}
+                  </span>
+                  {circle.name && (
+                    <span style={{ color: 'var(--text-primary)', opacity: 0.9, fontSize: '12px', padding: '0 8px', textAlign: 'center', wordBreak: 'break-word', maxWidth: '100%', textTransform: 'uppercase', fontFamily: 'monospace', letterSpacing: '0.08em', userSelect: 'none' }}>
+                      {circle.name}
+                    </span>
+                  )}
+                </>
+              )}
+            </div>
+          </motion.div>
+        ))}
+      </div>
+      </div>
+      {/* 스크롤 컨테이너 닫기 */}
+
+      {/* Control panel */}
+              <div
+                style={{
+                  position: 'fixed',
+          top: '32px',
+          left: controlPanelOpen ? '32px' : '-360px',
+                  display: 'flex',
+          flexDirection: 'column',
+          gap: '16px',
+          zIndex: 1000,
+          transition: 'all 0.35s ease'
                 }}
               >
                 <div
                   style={{
-                    background: '#fff',
-                    padding: 24,
-                    borderRadius: 12,
-                    minWidth: 400,
-                    boxShadow: '0 4px 20px rgba(0,0,0,0.15)'
-                  }}
-                >
-                  <h3 style={{ marginTop: 0, marginBottom: 20, color: '#333' }}>카드 편집</h3>
-                  <input
-                    type="text"
-                    value={editingNode.title}
-                    onChange={(e) => setEditingNode({ ...editingNode, title: e.target.value })}
-                    style={{
-                      width: '100%',
-                      padding: '12px 16px',
-                      border: '2px solid #e1e5e9',
-                      borderRadius: 8,
-                      fontSize: 16,
-                      marginBottom: 20,
-                      outline: 'none',
-                      transition: 'border-color 0.2s'
-                    }}
-                    autoFocus
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter') {
-                        if (editingNode && onUpdateCard) {
-                          onUpdateCard(editingNode.id, 'title', editingNode.title).then(() => {
-                            onRefresh?.();
-                            setEditingNode(null);
-                          });
-                        }
-                      } else if (e.key === 'Escape') {
-                        setEditingNode(null);
-                      }
-                    }}
-                  />
-                  <div style={{ display: 'flex', gap: 12, justifyContent: 'flex-end' }}>
-                    <button
-                      onClick={() => setEditingNode(null)}
-                      style={{
-                        padding: '10px 20px',
-                        border: '2px solid #e1e5e9',
-                        borderRadius: 8,
-                        background: '#fff',
-                        cursor: 'pointer',
-                        fontSize: 14,
-                        fontWeight: 500
-                      }}
-                    >
-                      취소
-                    </button>
-                    <button
-                      onClick={() => {
-                        if (editingNode && onUpdateCard) {
-                          onUpdateCard(editingNode.id, 'title', editingNode.title).then(() => {
-                            onRefresh?.();
-                            setEditingNode(null);
-                          });
-                        }
-                      }}
-                      style={{
-                        padding: '10px 20px',
-                        border: 'none',
-                        borderRadius: 8,
-                        background: '#007bff',
-                        color: '#fff',
-                        cursor: 'pointer',
-                        fontSize: 14,
-                        fontWeight: 500
-                      }}
-                    >
-                      저장
-                    </button>
-                  </div>
-                </div>
-              </div>
-            )}
-          </div>
-        )}
-      </div>
-
-        {/* 오른쪽 상세 정보 패널 */}
-        {selectedNode && (
-        <div style={{
-            width: 320,
-            background: '#fff',
-            border: '1px solid #ddd',
-            borderRadius: 8,
             display: 'flex',
             flexDirection: 'column',
-            overflow: 'hidden',
-            boxShadow: '0 2px 8px rgba(0,0,0,0.1)'
-          }}>
-            {/* 패널 헤더 */}
-            <div style={{
-              padding: 16,
-              borderBottom: '1px solid #e9ecef',
-              background: 'linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%)',
+            gap: '16px',
+            padding: '20px',
+            borderRadius: '24px',
+            backgroundColor: '#2a2a2a',
+            border: '1px solid rgba(255, 255, 255, 0.2)',
+            boxShadow: '0 20px 25px -5px rgba(0,0,0,0.35), 0 10px 10px -5px rgba(0,0,0,0.25)',
+            minWidth: '280px'
+          }}
+        >
+          {/* 관계 타입 선택 */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+            <label htmlFor="relation-type-select" style={{ fontSize: '14px', fontWeight: 700, color: '#ffffff', letterSpacing: '0.05em', textTransform: 'uppercase' }}>
+              관계 타입
+            </label>
+            <select
+              id="relation-type-select"
+              value={selectedRelationType}
+              onChange={(e) => setSelectedRelationType(e.target.value)}
+                    style={{
+                padding: '10px 14px',
+                borderRadius: '12px',
+                border: '1px solid rgba(255, 255, 255, 0.2)',
+                fontSize: '14px',
+                background: '#1a1a1a',
+                color: '#ffffff',
+                letterSpacing: '0.05em'
+              }}
+            >
+              <option value="">선택하세요</option>
+              {relationTypes.map(rt => (
+                <option key={rt.relationtype_id} value={rt.typename}>
+                  {rt.typename}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* 카드 추가 버튼 */}
+                    <button
+            onClick={() => addCircle()}
+                      style={{
               display: 'flex',
               alignItems: 'center',
-              justifyContent: 'space-between'
-            }}>
-              <div style={{
-                fontWeight: 600,
-                fontSize: 16,
-                color: '#212529',
+              justifyContent: 'center',
+              gap: '8px',
+              borderRadius: '999px',
+              padding: '20px',
+              textTransform: 'uppercase',
+              transition: 'all 0.3s',
+              backgroundColor: '#6A6A6A',
+              color: '#FFFFFF',
+              border: '3px solid rgba(255, 255, 255, 0.4)',
+              letterSpacing: '0.08em',
+              fontWeight: 800,
+                        cursor: 'pointer',
+              fontSize: '14px'
+                      }}
+                    >
+            <Plus size={18} />
+            ADD CIRCLE
+            <span style={{ fontSize: '12px', marginLeft: '4px', opacity: 0.6 }}>(⌘N)</span>
+                    </button>
+
+          {/* 화살표 모드 토글 */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '14px', borderRadius: '999px', backgroundColor: '#4A4A4A', border: '3px solid rgba(255,255,255,0.3)' }}>
+            <input
+              type="checkbox"
+              id="arrow-mode"
+              checked={arrowMode}
+              onChange={(e) => {
+                setArrowMode(e.target.checked);
+                setSelectedCircleForArrow(null);
+              }}
+              style={{ width: '20px', height: '20px', cursor: 'pointer' }}
+            />
+            <label
+              htmlFor="arrow-mode"
+                      style={{
+                        cursor: 'pointer',
                 display: 'flex',
                 alignItems: 'center',
-                gap: 8
-              }}>
-                📋 노드 상세정보
-              </div>
-              <button
-                onClick={() => setSelectedNode(null)}
-                style={{
-                  background: 'none',
-                  border: 'none',
-                  fontSize: 18,
-                  cursor: 'pointer',
-                  color: '#666',
-                  padding: 4,
-                  borderRadius: 4,
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center'
-                }}
-                title="패널 닫기"
-              >
-                ✕
-              </button>
-            </div>
-
-            {/* 패널 내용 */}
-            <div style={{
-              flex: 1,
-              padding: 16,
-              overflowY: 'auto',
-              display: 'flex',
-              flexDirection: 'column',
-              gap: 16
-            }}>
-              {/* 기본 정보 */}
-              <div>
-                <div style={{ fontWeight: 600, marginBottom: 8, color: '#495057' }}>
-                  🏷️ 기본 정보
-                </div>
-                <div style={{
-                  padding: 12,
-          background: '#f8f9fa',
-                  borderRadius: 6,
-                  border: '1px solid #e9ecef'
-                }}>
-                  <div style={{ marginBottom: 8 }}>
-                    <strong>제목:</strong> {selectedNode.name}
-                  </div>
-                  <div style={{ marginBottom: 8 }}>
-                    <strong>ID:</strong> <code style={{ fontSize: 12, background: '#e9ecef', padding: '2px 6px', borderRadius: 3 }}>{selectedNode.id}</code>
-                  </div>
-                  <div>
-                    <strong>Importance:</strong>
-                    <span style={{
-                      background: selectedNode.color,
-                      color: '#fff',
-                      padding: '2px 8px',
-                      borderRadius: 12,
-                      fontSize: 12,
-                      fontWeight: 600,
-                      marginLeft: 8
-                    }}>
-                      {selectedNode.importance}
-                    </span>
-                  </div>
-                </div>
-              </div>
-
-              {/* 연결 관계 */}
-              <div>
-                <div style={{ fontWeight: 600, marginBottom: 8, color: '#495057' }}>
-                  🔗 나가는 관계
-                </div>
-                <div style={{
-                  padding: 12,
-                  background: '#f8f9fa',
-                  borderRadius: 6,
-                  border: '1px solid #e9ecef'
-                }}>
-                  {(() => {
-                    const nodeRelations = relations.filter(rel =>
-                      rel.source === selectedNode.id &&
-                      rel.relationtype_id === relationTypes.find(rt => rt.typename === selectedRelationType)?.relationtype_id
-                    );
-
-                    if (nodeRelations.length === 0) {
-                      return <div style={{ color: '#999', fontStyle: 'italic' }}>이 노드에서 나가는 관계가 없습니다</div>;
-                    }
-
-                    return nodeRelations.map((rel, index) => {
-                      const otherNodeId = rel.target; // 항상 target (source 관계만 표시하므로)
-                      const otherNode = cards.find(c => c.id === otherNodeId);
-                      const direction = '→'; // 항상 나가는 관계
-
-                      return (
-                        <div key={index} style={{
-                          padding: 8,
-                          marginBottom: index < nodeRelations.length - 1 ? 8 : 0,
-                          background: '#fff',
-          borderRadius: 4,
-                          border: '1px solid #dee2e6',
-                          fontSize: 13
-                        }}>
-                          <div style={{ fontWeight: 500, marginBottom: 4 }}>
-                            {direction} {selectedRelationType}
-                          </div>
-                          <div style={{ color: '#666' }}>
-                            {otherNode?.title || otherNodeId}
-                          </div>
-                        </div>
-                      );
-                    });
-                  })()}
-                </div>
-              </div>
-
-              {/* 노드 시각화 정보 */}
-              <div>
-                <div style={{ fontWeight: 600, marginBottom: 8, color: '#495057' }}>
-                  🎨 시각화 정보
-                </div>
-                <div style={{
-                  padding: 12,
-                  background: '#f8f9fa',
-                  borderRadius: 6,
-                  border: '1px solid #e9ecef'
-                }}>
-                  <div style={{ marginBottom: 8, display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <strong>노드 크기:</strong>
-                    <div style={{
-                      width: selectedNode.val * 2,
-                      height: selectedNode.val * 2,
-                      borderRadius: '50%',
-                      background: selectedNode.color,
-                      border: '2px solid #fff',
-                      boxShadow: '0 1px 3px rgba(0,0,0,0.3)'
-                    }}></div>
-                    {selectedNode.val}px
-                  </div>
-                  <div style={{ marginBottom: 8 }}>
-                    <strong>색상:</strong>
-                    <span style={{
-                      background: selectedNode.color,
-                      padding: '2px 8px',
-                      borderRadius: 3,
-                      color: '#fff',
-                      fontSize: 12,
-                      marginLeft: 8
-                    }}>
-                      {selectedNode.color}
-                    </span>
-                  </div>
-                  <div>
-                    <strong>그룹:</strong> Group {selectedNode.group}
-                  </div>
-                </div>
-              </div>
-
-              {/* 빠른 액션 */}
-              <div>
-                <div style={{ fontWeight: 600, marginBottom: 8, color: '#495057' }}>
-                  ⚡ 빠른 액션
-                </div>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                  <button
-                    onClick={() => setEditingNode({ id: selectedNode.id, title: selectedNode.name })}
-                    style={{
-                      padding: '10px 16px',
-                      background: '#007bff',
-                      color: '#fff',
-                      border: 'none',
-                      borderRadius: 6,
-                      cursor: 'pointer',
-                      fontSize: 14,
-                      fontWeight: 500,
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: 8,
-                      justifyContent: 'center'
-                    }}
-                  >
-                    ✏️ 제목 편집
-                  </button>
-                  <button
-                    onClick={async () => {
-                      if (onDeleteCard && window.confirm(`"${selectedNode.name}" 노드를 삭제하시겠습니까?`)) {
-                        await onDeleteCard(selectedNode.id);
-                        setSelectedNode(null);
-                        if (onRefresh) await onRefresh();
-                      }
-                    }}
-                    style={{
-                      padding: '10px 16px',
-                      background: '#dc3545',
-                      color: '#fff',
-                      border: 'none',
-                      borderRadius: 6,
-                      cursor: 'pointer',
-                      fontSize: 14,
-                      fontWeight: 500,
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: 8,
-                      justifyContent: 'center'
-                    }}
-                  >
-                    🗑️ 노드 삭제
-                  </button>
-                  <button
-                    onClick={() => {
-                      setHighlightNodes(new Set([selectedNode.id]));
-                      const nodeRelations = relations.filter(rel =>
-                        rel.source === selectedNode.id &&
-                        rel.relationtype_id === relationTypes.find(rt => rt.typename === selectedRelationType)?.relationtype_id
-                      );
-                      const linkSet = new Set<string>();
-                      nodeRelations.forEach(rel => {
-                        linkSet.add(`${rel.source}-${rel.target}`);
-                      });
-                      setHighlightLinks(linkSet);
-                    }}
-                    style={{
-                      padding: '10px 16px',
-                      background: '#28a745',
-                      color: '#fff',
-                      border: 'none',
-                      borderRadius: 6,
-                      cursor: 'pointer',
-                      fontSize: 14,
-                      fontWeight: 500,
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: 8,
-                      justifyContent: 'center'
-                    }}
-                  >
-                    🔍 나가는 관계 하이라이트
-                  </button>
-                </div>
-              </div>
-            </div>
+                gap: '8px',
+                textTransform: 'uppercase',
+                color: '#FFFFFF',
+                letterSpacing: '0.08em',
+                fontWeight: 700
+              }}
+            >
+              <GitBranch size={16} />
+              <span>ARROW MODE</span>
+              {arrowMode && (
+                <span style={{ fontSize: '12px', padding: '4px 12px', borderRadius: '999px', textTransform: 'uppercase', backgroundColor: '#FFFFFF', color: '#000000', fontWeight: 800 }}>
+                  ON
+                </span>
+              )}
+              <span style={{ fontSize: '12px', opacity: 0.6 }}>(⌘B)</span>
+            </label>
           </div>
+
+          {arrowMode && (
+            <p style={{
+              fontSize: '14px',
+              padding: '14px',
+              borderRadius: '999px',
+              textTransform: 'uppercase',
+              border: '3px solid rgba(255,255,255,0.3)',
+              color: '#FFFFFF',
+              backgroundColor: '#4A4A4A',
+              letterSpacing: '0.08em',
+              fontFamily: 'IBM Plex Mono, monospace',
+              margin: 0,
+              textAlign: 'center'
+            }}>
+              {selectedCircleForArrow === null
+                ? 'SELECT FIRST CIRCLE'
+                : 'SELECT SECOND CIRCLE'}
+            </p>
         )}
       </div>
+      </div>
+      {/* Control panel toggle */}
+      <button
+        onClick={() => setControlPanelOpen(!controlPanelOpen)}
+        style={{
+          position: 'fixed',
+          top: '32px',
+          left: controlPanelOpen ? '340px' : '20px',
+          width: '44px',
+          height: '44px',
+          borderRadius: '50%',
+          border: '3px solid rgba(255,255,255,0.4)',
+          backgroundColor: '#6A6A6A',
+          color: '#FFFFFF',
+          cursor: 'pointer',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          boxShadow: '0 10px 20px rgba(0,0,0,0.25)',
+          zIndex: 1001,
+          transition: 'all 0.3s ease'
+        }}
+      >
+        {controlPanelOpen ? <ChevronLeft size={18} /> : <ChevronRight size={18} />}
+      </button>
 
-      {/* 상태 및 정보 패널 */}
-      {selectedRelationType && (
-        <div style={{
-          marginTop: 12,
-          padding: 16,
-          background: 'linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%)',
-          borderRadius: 8,
-          fontSize: 13,
-          color: '#495057',
-          flexShrink: 0,
-          border: '1px solid #e9ecef'
-        }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 24 }}>
-            <div style={{ flex: 1 }}>
-              <div style={{ fontWeight: 600, marginBottom: 8, color: '#212529' }}>
-                🔗 관계 타입: {selectedRelationType}
-              </div>
-              <div style={{ marginBottom: 4 }}>
-                <strong>📊 Importance:</strong> (자식 노드 수) + (자식들의 importance 합계)
-              </div>
-              <div style={{ marginBottom: 4 }}>
-                <strong>🎯 노드 수:</strong> {graphData.nodes.length}개 | <strong>🔗 링크 수:</strong> {graphData.links.length}개
-              </div>
-              {highlightNodes.size > 0 && (
-                <div style={{ marginTop: 8, padding: 8, background: 'rgba(0, 123, 255, 0.1)', borderRadius: 4 }}>
-                  <strong>🔍 선택됨:</strong> {highlightNodes.size}개 노드, {highlightLinks.size}개 링크
-                </div>
-              )}
+      {/* Circle Details Panel */}
+      {focusedCircleId !== null && (() => {
+        const selectedCircle = circles.find(c => c.id === focusedCircleId);
+        if (!selectedCircle) return null;
+
+        // 연결된 화살표 찾기
+        const outgoingArrows = arrows.filter(a => a.from === focusedCircleId);
+        const incomingArrows = arrows.filter(a => a.to === focusedCircleId);
+
+        return (
+          <div
+            style={{
+              position: 'fixed',
+              top: '32px',
+              right: detailPanelOpen ? '32px' : '-420px',
+              width: '384px',
+              zIndex: 1000,
+              transition: 'all 0.35s ease'
+            }}
+          >
+            <button
+              onClick={() => setDetailPanelOpen(!detailPanelOpen)}
+              style={{
+                position: 'absolute',
+                left: '-48px',
+                top: '12px',
+                width: '40px',
+                height: '40px',
+                borderRadius: '50%',
+                border: '2px solid rgba(255,255,255,0.4)',
+                backgroundColor: '#4A4A4A',
+                color: '#FFFFFF',
+                cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+                justifyContent: 'center',
+                boxShadow: '0 10px 20px rgba(0,0,0,0.25)'
+              }}
+            >
+              {detailPanelOpen ? <ChevronRight size={16} /> : <ChevronLeft size={16} />}
+            </button>
+            <div style={{
+              backgroundColor: '#4A4A4A',
+              border: '3px solid rgba(255,255,255,0.4)',
+              borderRadius: '24px',
+              boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.35), 0 10px 10px -5px rgba(0, 0, 0, 0.25)'
+            }}>
+              <div style={{
+                display: 'flex',
+                flexDirection: 'row',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                paddingBottom: '24px',
+                padding: '24px',
+                borderBottom: '1px solid rgba(255,255,255,0.3)'
+              }}>
+                <h3 style={{
+                  fontSize: '24px',
+                  textTransform: 'uppercase',
+                  color: '#FFFFFF',
+                  fontFamily: 'League Spartan, sans-serif',
+                  letterSpacing: '0.1em',
+                  fontWeight: 800,
+                  margin: 0
+                }}>CIRCLE DETAILS</h3>
+              <button
+                  onClick={() => setFocusedCircleId(null)}
+                style={{
+                    width: '40px',
+                    height: '40px',
+                    borderRadius: '50%',
+                    backgroundColor: 'transparent',
+                  border: 'none',
+                    color: '#FFFFFF',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                    justifyContent: 'center',
+                    transition: 'all 0.3s'
+                }}
+              >
+                  <X size={20} />
+              </button>
             </div>
+              <div style={{ padding: '24px', display: 'flex', flexDirection: 'column', gap: '24px', maxHeight: '70vh', overflowY: 'auto' }}>
+                {/* ID */}
+              <div>
+                  <label style={{
+                    textTransform: 'uppercase',
+                    color: 'rgba(255, 255, 255, 0.6)',
+                    fontSize: '12px',
+                    letterSpacing: '0.1em',
+                    display: 'block',
+                    marginBottom: '8px'
+                  }}>ID</label>
+                <div style={{
+                    fontSize: '20px',
+                    color: 'var(--text-primary)',
+                    fontFamily: 'monospace',
+                    letterSpacing: '0.05em'
+                  }}>#{selectedCircle.id}</div>
+                  </div>
 
-            <div style={{ flex: 1, fontSize: 12 }}>
-              <div style={{ fontWeight: 600, marginBottom: 8, color: '#212529' }}>
-                🎮 조작 가이드
+                {/* Name */}
+              <div>
+                  <label style={{
+                    textTransform: 'uppercase',
+                    color: 'rgba(255, 255, 255, 0.6)',
+                    fontSize: '12px',
+                    letterSpacing: '0.1em',
+                    display: 'block',
+                    marginBottom: '8px'
+                  }}>NAME</label>
+                  <input
+                    value={selectedCircle.name}
+                    onChange={(e) => {
+                      setCircles(circles.map(c =>
+                        c.id === focusedCircleId
+                          ? { ...c, name: e.target.value }
+                          : c
+                      ));
+                    }}
+                    placeholder="ENTER NAME..."
+                    style={{
+                      width: '100%',
+                      fontSize: '16px',
+                      textTransform: 'uppercase',
+                      backgroundColor: '#2A2A2A',
+                      border: '2px solid rgba(255,255,255,0.3)',
+                      color: '#FFFFFF',
+                      padding: '12px 14px',
+                      borderRadius: '12px',
+                      letterSpacing: '0.05em',
+                      fontFamily: 'IBM Plex Mono, monospace'
+                    }}
+                  />
+                  </div>
+
+                {/* Content */}
+                  <div>
+                  <label style={{
+                    textTransform: 'uppercase',
+                    color: 'rgba(255, 255, 255, 0.6)',
+                    fontSize: '12px',
+                    letterSpacing: '0.1em',
+                    display: 'block',
+                    marginBottom: '8px'
+                  }}>CONTENT</label>
+                  <textarea
+                    value={selectedCircle.content || ''}
+                    onChange={(e) => {
+                      setCircles(circles.map(c =>
+                        c.id === focusedCircleId
+                          ? { ...c, content: e.target.value }
+                          : c
+                      ));
+                    }}
+                    placeholder="ENTER CONTENT..."
+                    style={{
+                      width: '100%',
+                      minHeight: '120px',
+                      padding: '12px 14px',
+                      borderRadius: '12px',
+                      border: '2px solid rgba(255,255,255,0.3)',
+                      backgroundColor: '#2A2A2A',
+                      color: '#FFFFFF',
+                      fontSize: '14px',
+                      letterSpacing: '0.05em',
+                      fontFamily: 'IBM Plex Mono, monospace',
+                      resize: 'vertical'
+                    }}
+                  />
+                  </div>
+
+                {/* Color */}
+                <div>
+                  <label style={{
+                    textTransform: 'uppercase',
+                    color: 'rgba(255, 255, 255, 0.6)',
+                    fontSize: '12px',
+                    letterSpacing: '0.1em',
+                    display: 'block',
+                    marginBottom: '8px'
+                  }}>COLOR</label>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                    <div
+                      style={{
+                        width: '56px',
+                        height: '56px',
+                        borderRadius: '50%',
+                        backgroundColor: selectedCircle.color,
+                        border: '3px solid rgba(255,255,255,0.4)'
+                      }}
+                    />
+                    <input
+                      type="text"
+                      value={selectedCircle.color}
+                      onChange={(e) => {
+                        setCircles(circles.map(c =>
+                          c.id === focusedCircleId
+                            ? { ...c, color: e.target.value }
+                            : c
+                        ));
+                      }}
+                      style={{
+                        flex: 1,
+                        backgroundColor: '#2A2A2A',
+                        border: '2px solid rgba(255, 255, 255, 0.3)',
+                        color: '#FFFFFF',
+                        padding: '12px 14px',
+                        borderRadius: '12px',
+                        letterSpacing: '0.05em',
+                        fontFamily: 'IBM Plex Mono, monospace'
+                      }}
+                    />
+                </div>
               </div>
-              <div style={{ lineHeight: 1.6 }}>
-                <div>• <strong>클릭:</strong> 노드 선택 및 연결 하이라이트</div>
-                <div>• <strong>더블클릭:</strong> 카드 제목 편집</div>
-                <div>• <strong>검색:</strong> 노드명으로 실시간 필터링</div>
-                <div>• <strong>초기화 버튼:</strong> 선택 및 하이라이트 해제</div>
-                <div>• <strong>Importance:</strong> 노드 크기로 중요도 표시</div>
-                <div>• <strong>색상:</strong> 중요도에 따른 자동 색상 변화</div>
+
+                {/* Node Value */}
+              <div>
+                  <label style={{
+                    textTransform: 'uppercase',
+                    color: 'rgba(255, 255, 255, 0.6)',
+                    fontSize: '12px',
+                    letterSpacing: '0.1em',
+                    display: 'block',
+                    marginBottom: '8px'
+                  }}>NODE VALUE</label>
+                  <div style={{
+                    fontSize: '32px',
+                    color: '#FFFFFF',
+                    fontFamily: 'League Spartan, sans-serif',
+                    fontWeight: 800,
+                    letterSpacing: '0.05em'
+                  }}>{selectedCircle.value}</div>
+                  <p style={{
+                    fontSize: '12px',
+                    textTransform: 'uppercase',
+                    color: 'rgba(255, 255, 255, 0.5)',
+                    fontFamily: 'IBM Plex Mono, monospace',
+                    letterSpacing: '0.05em',
+                    margin: '4px 0 0 0'
+                  }}>
+                    (CHILDREN COUNT + VALUES SUM)
+                  </p>
+                </div>
+
+                {/* Rank */}
+                <div>
+                  <label style={{
+                    textTransform: 'uppercase',
+                    color: 'rgba(255, 255, 255, 0.6)',
+                    fontSize: '12px',
+                    letterSpacing: '0.1em',
+                    display: 'block',
+                    marginBottom: '8px'
+                  }}>RANK</label>
+                <div style={{
+                    fontSize: '32px',
+                    color: '#FFFFFF',
+                    fontFamily: 'League Spartan, sans-serif',
+                    fontWeight: 800,
+                    letterSpacing: '0.05em'
+                  }}>#{selectedCircle.rank}</div>
+                  <p style={{
+                    fontSize: '12px',
+                    textTransform: 'uppercase',
+                    color: 'rgba(255, 255, 255, 0.5)',
+                    fontFamily: 'IBM Plex Mono, monospace',
+                    letterSpacing: '0.05em',
+                    margin: '4px 0 0 0'
+                  }}>
+                    GROUP RANKING
+                  </p>
+                </div>
+
+                {/* Level */}
+                <div>
+                  <label style={{
+                    textTransform: 'uppercase',
+                    color: 'rgba(255, 255, 255, 0.6)',
+                    fontSize: '12px',
+                    letterSpacing: '0.1em',
+                    display: 'block',
+                    marginBottom: '8px'
+                  }}>LEVEL</label>
+                  <div style={{
+                    fontSize: '32px',
+                    color: '#FFFFFF',
+                    fontFamily: 'League Spartan, sans-serif',
+                    fontWeight: 800,
+                    letterSpacing: '0.05em'
+                  }}>{selectedCircle.level}</div>
+                  <p style={{
+                    fontSize: '12px',
+                    textTransform: 'uppercase',
+                    color: 'rgba(255, 255, 255, 0.5)',
+                    fontFamily: 'IBM Plex Mono, monospace',
+                    letterSpacing: '0.05em',
+                    margin: '4px 0 0 0'
+                  }}>
+                    ARROW DEPTH
+                  </p>
+                </div>
+
+                {/* Position */}
+                <div>
+                  <label style={{
+                    textTransform: 'uppercase',
+                    color: 'rgba(255, 255, 255, 0.6)',
+                    fontSize: '12px',
+                    letterSpacing: '0.1em',
+                    display: 'block',
+                    marginBottom: '8px'
+                  }}>POSITION</label>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                    <div style={{
+                      padding: '12px',
+                      borderRadius: '12px',
+                      border: '1px solid #444',
+                      backgroundColor: '#1e1e1e'
+                    }}>
+                      <span style={{
+                        fontSize: '12px',
+                        textTransform: 'uppercase',
+                        display: 'block',
+                        color: 'rgba(255, 255, 255, 0.5)',
+                        fontFamily: 'monospace',
+                        letterSpacing: '0.05em',
+                        marginBottom: '4px'
+                      }}>X</span>
+                      <span style={{
+                        fontSize: '18px',
+                        color: 'var(--text-primary)',
+                        fontFamily: 'monospace'
+                      }}>{Math.round(selectedCircle.x)}</span>
+                          </div>
+                    <div style={{
+                      padding: '12px',
+                      borderRadius: '12px',
+                      border: '1px solid #444',
+                      backgroundColor: '#1e1e1e'
+                    }}>
+                      <span style={{
+                        fontSize: '12px',
+                        textTransform: 'uppercase',
+                        display: 'block',
+                        color: 'rgba(255, 255, 255, 0.5)',
+                        fontFamily: 'monospace',
+                        letterSpacing: '0.05em',
+                        marginBottom: '4px'
+                      }}>Y</span>
+                      <span style={{
+                        fontSize: '18px',
+                        color: 'var(--text-primary)',
+                        fontFamily: 'monospace'
+                      }}>{Math.round(selectedCircle.y)}</span>
+                          </div>
+                </div>
+              </div>
+
+                {/* Connections */}
+              <div>
+                  <label style={{
+                    textTransform: 'uppercase',
+                    color: 'rgba(255, 255, 255, 0.6)',
+                    fontSize: '12px',
+                    letterSpacing: '0.1em',
+                    display: 'block',
+                    marginBottom: '8px'
+                  }}>CONNECTIONS</label>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                <div style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      padding: '12px',
+                      borderRadius: '12px',
+                      border: '1px solid #444',
+                      backgroundColor: '#1e1e1e'
+                    }}>
+                    <span style={{
+                        fontSize: '14px',
+                        textTransform: 'uppercase',
+                        color: 'rgba(255, 255, 255, 0.7)',
+                        fontFamily: 'monospace',
+                        letterSpacing: '0.05em'
+                      }}>OUTGOING</span>
+                      <span style={{
+                        fontSize: '18px',
+                      color: 'var(--text-primary)',
+                        fontFamily: 'sans-serif',
+                        fontWeight: 700
+                      }}>{outgoingArrows.length}</span>
+                    </div>
+                    <div style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      padding: '12px',
+                      borderRadius: '12px',
+                      border: '1px solid #444',
+                      backgroundColor: '#1e1e1e'
+                    }}>
+                      <span style={{
+                        fontSize: '14px',
+                        textTransform: 'uppercase',
+                        color: 'rgba(255, 255, 255, 0.7)',
+                        fontFamily: 'monospace',
+                        letterSpacing: '0.05em'
+                      }}>INCOMING</span>
+                      <span style={{
+                        fontSize: '18px',
+                        color: 'var(--text-primary)',
+                        fontFamily: 'sans-serif',
+                        fontWeight: 700
+                      }}>{incomingArrows.length}</span>
+                  </div>
+                </div>
+              </div>
+
+                <div style={{ borderTop: '1px solid #444', paddingTop: '16px' }} />
+
+                {/* Actions */}
+              <div>
+                  <button
+                    style={{
+                      width: '100%',
+                      borderRadius: '999px',
+                      padding: '24px',
+                      textTransform: 'uppercase',
+                      transition: 'all 0.3s',
+                      backgroundColor: '#d4183d',
+                      color: 'var(--text-primary)',
+                      border: '1px solid #d4183d',
+                      letterSpacing: '0.08em',
+                      fontWeight: 700,
+                      cursor: 'pointer',
+                      fontSize: '14px'
+                    }}
+                    onClick={async (e) => {
+                      await handleCircleRightClick(e as any, focusedCircleId);
+                      setFocusedCircleId(null);
+                    }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.transform = 'scale(1.05)';
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.transform = 'scale(1)';
+                    }}
+                  >
+                    DELETE CIRCLE
+                  </button>
+                </div>
               </div>
             </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
     </div>
   );
 }
@@ -6705,7 +7452,7 @@ function Visualization() {
                           top: 8,
                           right: 36,
                           background: '#0066cc',
-                          color: 'white',
+                          color: 'var(--text-primary)',
                           borderRadius: 10,
                           padding: '2px 6px',
                           fontSize: 10,
@@ -6717,7 +7464,7 @@ function Visualization() {
                     );
                   })}
                   {getSortedCards().filter(c => !c.complete).length === 0 && (
-                    <p style={{ color: '#888', fontStyle: 'italic', marginLeft: 20 }}>
+                    <p style={{ color: 'var(--text-muted)', fontStyle: 'italic', marginLeft: 20 }}>
                       모든 할일을 완료했습니다! 🎉
                     </p>
                   )}
@@ -6761,8 +7508,8 @@ function Visualization() {
                             position: 'absolute',
                             top: 8,
                             right: 36,
-                            background: '#666',
-                            color: 'white',
+                            background: 'var(--text-disabled)',
+                            color: 'var(--text-primary)',
                             borderRadius: 10,
                             padding: '2px 6px',
                             fontSize: 10,
@@ -6781,6 +7528,7 @@ function Visualization() {
         )}
 
         {activeTab === 'graph' && (
+          <div style={{ flex: 1, height: '100%', minHeight: '400px', position: 'relative' }}>
           <GraphView
             cards={cards}
             relations={allRelations}
@@ -6792,6 +7540,7 @@ function Visualization() {
             onDeleteRelation={deleteRelationFromGraph}
             onRefresh={refreshData}
           />
+          </div>
         )}
 
         {activeTab === 'calendar' && (
@@ -6823,20 +7572,22 @@ function Visualization() {
 
             <label style={{display:'flex',alignItems:'center',gap:8}}>
               카드타입 ({cardTypes.length}개 로드됨)
-              <input
-                list="cardTypeOptionsViz"
+              <select
                 className="editor-input"
-                value={cardTypeInput}
-                onChange={(e)=>setCardTypeInput(e.target.value)}
-                onBlur={saveCardType}
-                placeholder="카드타입을 입력하세요"
-                title={`사용 가능한 카드타입: ${cardTypes.map(ct => ct.cardtype_name).join(', ')}`}
-              />
-              <datalist id="cardTypeOptionsViz">
+                value={selectedCard.cardtype ?? ''}
+                onChange={(e)=>{
+                  const newId = e.target.value ? Number(e.target.value) : null;
+                  if (newId !== null) {
+                    updateCardField('cardtype', newId);
+                  }
+                }}
+                style={{ flex: 1 }}
+              >
+                <option value="">선택</option>
                 {cardTypes.map((ct) => (
-                  <option key={ct.cardtype_id} value={ct.cardtype_name} />
+                  <option key={ct.cardtype_id} value={ct.cardtype_id}>{ct.cardtype_name}</option>
                 ))}
-              </datalist>
+              </select>
             </label>
 
             <label style={{display:'flex',alignItems:'center',gap:8}}>
@@ -6981,8 +7732,8 @@ function Visualization() {
             bottom: 20,
             left: '50%',
             transform: 'translateX(-50%)',
-            background: '#333',
-            color: '#fff',
+            background: 'var(--panel)',
+            color: 'var(--text-primary)',
             padding: '8px 16px',
             borderRadius: 6,
             zIndex: 9999,
@@ -7021,9 +7772,9 @@ function Visualization() {
         >
           <div
             style={{
-              background: '#1e1e1e',
+              background: 'var(--bg-dark)',
               borderRadius: 8,
-              border: '1px solid #555',
+              border: '1px solid var(--border-dark)',
               padding: 24,
               maxWidth: 600,
               width: '90%',
@@ -7038,7 +7789,7 @@ function Visualization() {
                 style={{
                   background: 'none',
                   border: 'none',
-                  color: '#888',
+                  color: 'var(--text-muted)',
                   fontSize: 24,
                   cursor: 'pointer',
                   padding: 0,
@@ -7054,7 +7805,7 @@ function Visualization() {
             </div>
 
             <div style={{ marginBottom: 20 }}>
-              <p style={{ color: '#fff', fontSize: 16, lineHeight: 1.5 }}>
+              <p style={{ color: 'var(--text-primary)', fontSize: 16, lineHeight: 1.5 }}>
                 <strong>{conflictModal.field}</strong> 필드를 <strong>{conflictModal.value}</strong>로 변경하려고 했지만,
                 다음 before/after 관계 때문에 변경할 수 없습니다:
               </p>
@@ -7078,7 +7829,7 @@ function Visualization() {
                   <div style={{ color: '#ffd43b', fontSize: 14, marginBottom: 8 }}>
                     충돌 유형: {conflict.conflictType}
                   </div>
-                  <div style={{ color: '#fff', fontSize: 14 }}>
+                  <div style={{ color: 'var(--text-primary)', fontSize: 14 }}>
                     {conflict.message}
                   </div>
                 </div>
@@ -7090,7 +7841,7 @@ function Visualization() {
                 onClick={() => setConflictModal({ show: false, field: '', value: null, conflicts: [] })}
                 style={{
                   background: '#0066cc',
-                  color: '#fff',
+                  color: 'var(--text-primary)',
                   border: 'none',
                   borderRadius: 4,
                   padding: '12px 24px',
@@ -7103,7 +7854,7 @@ function Visualization() {
             </div>
 
             <div style={{ marginTop: 16, padding: 12, background: '#2a2a2a', borderRadius: 4, border: '1px solid #444' }}>
-              <p style={{ color: '#888', fontSize: 12, margin: 0, lineHeight: 1.4 }}>
+              <p style={{ color: 'var(--text-muted)', fontSize: 12, margin: 0, lineHeight: 1.4 }}>
                 💡 팁: before/after 관계에서는 앞선 카드의 날짜가 뒤따르는 카드의 날짜보다 늦을 수 없습니다.
                 관계를 먼저 수정하거나 다른 카드의 날짜를 조정해주세요.
               </p>
@@ -7118,11 +7869,13 @@ function Visualization() {
 // 관계 관리 페이지
 // 설정 페이지
 function Settings() {
+  const { language, setLanguage: setLanguageContext, t } = useContext(LanguageContext);
   const [settings, setSettings] = useState({
     confirmDelete: true,
     sleepStartTime: '23:00',
     sleepEndTime: '07:00',
     sleepDuration: '8시간',
+    defaultCardType: 'todo',
     exportTemplate: `내보내기 일시: {currentDateTime}
 수면 패턴: {sleepStartTime} ~ {sleepEndTime} ({sleepDuration})
 
@@ -7136,6 +7889,8 @@ function Settings() {
 {timeLines}`
   });
   const [toast, setToast] = useState('');
+  const [cardTypes, setCardTypes] = useState<any[]>([]);
+  const [theme, setTheme] = useState<Theme>('black-gray-white');
 
   // 수면시간 자동 계산 함수
   const calculateSleepDuration = (startTime: string, endTime: string): string => {
@@ -7168,8 +7923,10 @@ function Settings() {
     }
   };
 
-  // 설정 불러오기
+  // 설정 및 카드타입 불러오기
   useEffect(() => {
+    const loadData = async () => {
+      // 설정 불러오기
     try {
       const savedSettings = localStorage.getItem('for-need-settings');
       if (savedSettings) {
@@ -7179,6 +7936,31 @@ function Settings() {
     } catch (error) {
       console.warn('설정 불러오기 실패:', error);
     }
+
+      // 테마 설정 불러오기
+      try {
+        const result = await window.electron.ipcRenderer.invoke('get-settings');
+        if (result.success && result.data?.theme) {
+          const savedTheme = result.data.theme as Theme;
+          setTheme(savedTheme);
+          applyTheme(savedTheme);
+        }
+      } catch (error) {
+        console.warn('테마 설정 불러오기 실패:', error);
+      }
+
+      // 카드타입 목록 불러오기
+      try {
+        const result = await window.electron.ipcRenderer.invoke('get-cardtypes');
+        if (result.success) {
+          setCardTypes(result.data);
+        }
+      } catch (error) {
+        console.error('카드타입 로드 실패:', error);
+      }
+    };
+
+    loadData();
   }, []);
 
   // 설정 저장하기
@@ -7201,6 +7983,7 @@ function Settings() {
       sleepStartTime: '23:00',
       sleepEndTime: '07:00',
       sleepDuration: '8시간',
+      defaultCardType: 'todo',
       exportTemplate: `내보내기 일시: {currentDateTime}
 수면 패턴: {sleepStartTime} ~ {sleepEndTime} ({sleepDuration})
 
@@ -7213,7 +7996,7 @@ function Settings() {
 {timeLegend}
 {timeLines}`
     });
-    showToast('설정이 기본값으로 초기화되었습니다');
+    showToast(t('settings.resetConfirm'));
   };
 
   return (
@@ -7230,7 +8013,7 @@ function Settings() {
           top: 20,
           right: 20,
           background: '#0066cc',
-          color: '#fff',
+          color: 'var(--text-primary)',
           padding: '12px 20px',
           borderRadius: 6,
           boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
@@ -7241,7 +8024,88 @@ function Settings() {
         </div>
       )}
 
-      <h2 style={{ marginTop: 0, marginBottom: 32, color: '#fff' }}>설정</h2>
+      <h2 style={{ marginTop: 0, marginBottom: 32, color: '#fff' }}>{t('settings.title')}</h2>
+
+      {/* 테마 설정 섹션 */}
+      <div style={{
+        marginBottom: 32,
+        padding: 20,
+        background: 'var(--bg-dark)',
+        borderRadius: 8,
+        border: '1px solid #333'
+      }}>
+        <h3 style={{ margin: 0, marginBottom: 16, fontSize: 18, color: '#fff' }}>테마</h3>
+        <label style={{ display: 'block', marginBottom: 8, fontSize: 14, color: '#ccc' }}>
+          테마 선택
+        </label>
+        <select
+          value={theme}
+          onChange={async (e) => {
+            const newTheme = e.target.value as Theme;
+            setTheme(newTheme);
+            applyTheme(newTheme);
+            
+            // 테마 설정 저장
+            try {
+              await window.electron.ipcRenderer.invoke('save-settings', { theme: newTheme });
+              showToast('테마가 변경되었습니다.');
+            } catch (error) {
+              console.error('테마 설정 저장 실패:', error);
+              showToast('테마 저장에 실패했습니다.');
+            }
+          }}
+          style={{
+            width: '100%',
+            padding: 12,
+            background: 'var(--panel)',
+            color: 'var(--text-primary)',
+            border: '1px solid var(--border-dark)',
+            borderRadius: 4,
+            fontSize: 14,
+            boxSizing: 'border-box'
+          }}
+        >
+          <option value="brown">{themeNames.brown}</option>
+          <option value="black-gray-white">{themeNames['black-gray-white']}</option>
+          <option value="dark">{themeNames.dark}</option>
+          <option value="light">{themeNames.light}</option>
+        </select>
+      </div>
+
+      {/* 언어 설정 섹션 */}
+      <div style={{
+        marginBottom: 32,
+        padding: 20,
+        background: 'var(--bg-dark)',
+        borderRadius: 8,
+        border: '1px solid #333'
+      }}>
+        <h3 style={{ margin: 0, marginBottom: 16, fontSize: 18, color: '#fff' }}>{t('settings.language')}</h3>
+        <label style={{ display: 'block', marginBottom: 8, fontSize: 14, color: '#ccc' }}>
+          {t('settings.language')}
+        </label>
+        <select
+          value={language}
+          onChange={(e) => {
+            const newLang = e.target.value as Language;
+            setLanguageContext(newLang);
+            showToast(t('settings.saved'));
+          }}
+          style={{
+            width: '100%',
+            padding: 12,
+            background: 'var(--panel)',
+            color: 'var(--text-primary)',
+            border: '1px solid var(--border-dark)',
+            borderRadius: 4,
+            fontSize: 14,
+            boxSizing: 'border-box'
+          }}
+        >
+          <option value="ko">{t('settings.language.ko')}</option>
+          <option value="en">{t('settings.language.en')}</option>
+        </select>
+      </div>
 
       {/* DB 설정 섹션 */}
       <DatabaseSettings />
@@ -7250,11 +8114,11 @@ function Settings() {
       <div style={{
         marginBottom: 32,
         padding: 20,
-        background: '#1e1e1e',
+        background: 'var(--bg-dark)',
         borderRadius: 8,
         border: '1px solid #333'
       }}>
-        <h3 style={{ margin: 0, marginBottom: 16, fontSize: 18, color: '#fff' }}>카드 삭제</h3>
+        <h3 style={{ margin: 0, marginBottom: 16, fontSize: 18, color: '#fff' }}>{t('settings.cardDelete')}</h3>
         <label style={{
           display: 'flex',
           alignItems: 'center',
@@ -7268,7 +8132,7 @@ function Settings() {
             onChange={(e) => setSettings(prev => ({ ...prev, confirmDelete: e.target.checked }))}
             style={{ transform: 'scale(1.2)' }}
           />
-          <span>카드 삭제 시 확인창 표시</span>
+          <span>{t('settings.cardDeleteConfirm')}</span>
         </label>
       </div>
 
@@ -7276,16 +8140,16 @@ function Settings() {
       <div style={{
         marginBottom: 32,
         padding: 20,
-        background: '#1e1e1e',
+        background: 'var(--bg-dark)',
         borderRadius: 8,
         border: '1px solid #333'
       }}>
-        <h3 style={{ margin: 0, marginBottom: 16, fontSize: 18, color: '#fff' }}>수면 패턴</h3>
+        <h3 style={{ margin: 0, marginBottom: 16, fontSize: 18, color: '#fff' }}>{t('settings.sleepPattern')}</h3>
 
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 16, marginBottom: 16 }}>
           <div>
             <label style={{ display: 'block', marginBottom: 8, fontSize: 14, color: '#ccc' }}>
-              수면 시작
+              {t('settings.sleepStart')}
             </label>
             <input
               type="time"
@@ -7302,9 +8166,9 @@ function Settings() {
               style={{
                 width: '100%',
                 padding: 12,
-                background: '#333',
-                color: '#fff',
-                border: '1px solid #555',
+                background: 'var(--panel)',
+                color: 'var(--text-primary)',
+                border: '1px solid var(--border-dark)',
                 borderRadius: 4,
                 fontSize: 14,
                 boxSizing: 'border-box'
@@ -7314,7 +8178,7 @@ function Settings() {
 
           <div>
             <label style={{ display: 'block', marginBottom: 8, fontSize: 14, color: '#ccc' }}>
-              수면 종료
+              {t('settings.sleepEnd')}
             </label>
             <input
               type="time"
@@ -7331,9 +8195,9 @@ function Settings() {
               style={{
                 width: '100%',
                 padding: 12,
-                background: '#333',
-                color: '#fff',
-                border: '1px solid #555',
+                background: 'var(--panel)',
+                color: 'var(--text-primary)',
+                border: '1px solid var(--border-dark)',
                 borderRadius: 4,
                 fontSize: 14,
                 boxSizing: 'border-box'
@@ -7343,7 +8207,7 @@ function Settings() {
 
           <div>
             <label style={{ display: 'block', marginBottom: 8, fontSize: 14, color: '#ccc' }}>
-              수면시간
+              {t('settings.sleepDuration')}
             </label>
             <input
               type="text"
@@ -7353,9 +8217,9 @@ function Settings() {
               style={{
                 width: '100%',
                 padding: 12,
-                background: '#333',
-                color: '#fff',
-                border: '1px solid #555',
+                background: 'var(--panel)',
+                color: 'var(--text-primary)',
+                border: '1px solid var(--border-dark)',
                 borderRadius: 4,
                 fontSize: 14,
                 boxSizing: 'border-box'
@@ -7365,7 +8229,44 @@ function Settings() {
         </div>
 
         <p style={{ margin: 0, fontSize: 12, color: '#888' }}>
-          수면 시작/종료 시각을 변경하면 수면시간이 자동으로 계산됩니다. 수동으로도 수정할 수 있습니다.
+          {t('settings.sleepAutoCalculate')}
+        </p>
+      </div>
+
+      {/* 기본 카드타입 설정 */}
+      <div style={{
+        marginBottom: 32,
+        padding: 20,
+        background: 'var(--bg-dark)',
+        borderRadius: 8,
+        border: '1px solid #333'
+      }}>
+        <h3 style={{ margin: 0, marginBottom: 16, fontSize: 18, color: '#fff' }}>{t('settings.newCard')}</h3>
+        <label style={{ display: 'block', marginBottom: 8, fontSize: 14, color: '#ccc' }}>
+          {t('settings.defaultCardType')}
+        </label>
+        <select
+          value={settings.defaultCardType || 'todo'}
+          onChange={(e) => setSettings(prev => ({ ...prev, defaultCardType: e.target.value }))}
+          style={{
+            width: '100%',
+            padding: 12,
+            background: 'var(--panel)',
+            color: 'var(--text-primary)',
+            border: '1px solid var(--border-dark)',
+            borderRadius: 4,
+            fontSize: 14,
+            boxSizing: 'border-box'
+          }}
+        >
+          {cardTypes.map((cardType) => (
+            <option key={cardType.cardtype_id} value={cardType.cardtype_name}>
+              {cardType.cardtype_name}
+            </option>
+          ))}
+        </select>
+        <p style={{ margin: '8px 0 0 0', fontSize: 12, color: '#888' }}>
+          {t('settings.defaultCardTypeDesc')}
         </p>
       </div>
 
@@ -7373,13 +8274,13 @@ function Settings() {
       <div style={{
         marginBottom: 32,
         padding: 20,
-        background: '#1e1e1e',
+        background: 'var(--bg-dark)',
         borderRadius: 8,
         border: '1px solid #333'
       }}>
-        <h3 style={{ margin: 0, marginBottom: 8, fontSize: 18, color: '#fff' }}>내보내기 텍스트 템플릿</h3>
+        <h3 style={{ margin: 0, marginBottom: 8, fontSize: 18, color: '#fff' }}>{t('settings.exportTemplate')}</h3>
         <p style={{ margin: 0, marginBottom: 16, fontSize: 14, color: '#888' }}>
-          사용 가능한 변수: {'{currentDateTime}'}, {'{sleepStartTime}'}, {'{sleepEndTime}'}, {'{sleepDuration}'}, {'{relationCount}'}, {'{relationList}'}, {'{timeCardsCount}'}, {'{timeLegend}'}, {'{timeLines}'}
+          {t('settings.exportTemplateVariables')}
         </p>
         <textarea
           value={settings.exportTemplate}
@@ -7387,9 +8288,9 @@ function Settings() {
           style={{
             width: '100%',
             minHeight: 200,
-            background: '#333',
-            color: '#fff',
-            border: '1px solid #555',
+            background: 'var(--panel)',
+            color: 'var(--text-primary)',
+            border: '1px solid var(--border-dark)',
             borderRadius: 4,
             padding: 12,
             fontSize: 14,
@@ -7397,7 +8298,7 @@ function Settings() {
             resize: 'vertical',
             boxSizing: 'border-box'
           }}
-          placeholder="내보내기 텍스트 템플릿을 입력하세요..."
+          placeholder={t('settings.exportTemplatePlaceholder')}
         />
       </div>
 
@@ -7407,29 +8308,29 @@ function Settings() {
           onClick={resetToDefaults}
           style={{
             padding: '12px 24px',
-            background: '#666',
-            color: '#fff',
+            background: 'var(--text-disabled)',
+            color: 'var(--text-primary)',
             border: 'none',
             borderRadius: 6,
             cursor: 'pointer',
             fontSize: 14
           }}
         >
-          기본값 복원
+          {t('common.reset')}
         </button>
         <button
-          onClick={() => showToast('설정이 저장되었습니다')}
+          onClick={() => showToast(t('settings.saved'))}
           style={{
             padding: '12px 24px',
             background: '#0066cc',
-            color: '#fff',
+            color: 'var(--text-primary)',
             border: 'none',
             borderRadius: 6,
             cursor: 'pointer',
             fontSize: 14
           }}
         >
-          저장
+          {t('common.save')}
         </button>
       </div>
       </div>
@@ -7740,7 +8641,7 @@ function TrashManage() {
           top: 20,
           right: 20,
           background: '#0066cc',
-          color: '#fff',
+          color: 'var(--text-primary)',
           padding: '12px 20px',
           borderRadius: 6,
           boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
@@ -7797,7 +8698,7 @@ function TrashManage() {
                 style={{
                   padding: '8px 16px',
                   background: '#28a745',
-                  color: '#fff',
+                  color: 'var(--text-primary)',
                   border: 'none',
                   borderRadius: 4,
                   cursor: deletedCards.length > 0 ? 'pointer' : 'not-allowed',
@@ -7812,7 +8713,7 @@ function TrashManage() {
                 style={{
                   padding: '8px 16px',
                   background: '#dc3545',
-                  color: '#fff',
+                  color: 'var(--text-primary)',
                   border: 'none',
                   borderRadius: 4,
                   cursor: deletedCards.length > 0 ? 'pointer' : 'not-allowed',
@@ -7830,18 +8731,18 @@ function TrashManage() {
             </p>
           ) : (
             <div style={{
-              background: '#1e1e1e',
+              background: 'var(--bg-dark)',
               borderRadius: 8,
-              border: '1px solid #333',
+              border: '1px solid var(--border)',
               overflow: 'hidden'
             }}>
               <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                 <thead>
                   <tr style={{ background: '#2a2a2a' }}>
-                    <th style={{ padding: 12, textAlign: 'left', color: '#fff', borderBottom: '1px solid #333' }}>제목</th>
-                    <th style={{ padding: 12, textAlign: 'left', color: '#fff', borderBottom: '1px solid #333' }}>카드타입</th>
-                    <th style={{ padding: 12, textAlign: 'left', color: '#fff', borderBottom: '1px solid #333' }}>삭제일</th>
-                    <th style={{ padding: 12, textAlign: 'center', color: '#fff', borderBottom: '1px solid #333' }}>작업</th>
+                    <th style={{ padding: 12, textAlign: 'left', color: 'var(--text-primary)', borderBottom: '1px solid #333' }}>제목</th>
+                    <th style={{ padding: 12, textAlign: 'left', color: 'var(--text-primary)', borderBottom: '1px solid #333' }}>카드타입</th>
+                    <th style={{ padding: 12, textAlign: 'left', color: 'var(--text-primary)', borderBottom: '1px solid #333' }}>삭제일</th>
+                    <th style={{ padding: 12, textAlign: 'center', color: 'var(--text-primary)', borderBottom: '1px solid #333' }}>작업</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -7858,7 +8759,7 @@ function TrashManage() {
                           style={{
                             padding: '4px 12px',
                             background: '#28a745',
-                            color: '#fff',
+                            color: 'var(--text-primary)',
                             border: 'none',
                             borderRadius: 4,
                             cursor: 'pointer',
@@ -7873,7 +8774,7 @@ function TrashManage() {
                           style={{
                             padding: '4px 12px',
                             background: '#dc3545',
-                            color: '#fff',
+                            color: 'var(--text-primary)',
                             border: 'none',
                             borderRadius: 4,
                             cursor: 'pointer',
@@ -7904,7 +8805,7 @@ function TrashManage() {
                 style={{
                   padding: '8px 16px',
                   background: '#28a745',
-                  color: '#fff',
+                  color: 'var(--text-primary)',
                   border: 'none',
                   borderRadius: 4,
                   cursor: deletedRelations.length > 0 ? 'pointer' : 'not-allowed',
@@ -7919,7 +8820,7 @@ function TrashManage() {
                 style={{
                   padding: '8px 16px',
                   background: '#dc3545',
-                  color: '#fff',
+                  color: 'var(--text-primary)',
                   border: 'none',
                   borderRadius: 4,
                   cursor: deletedRelations.length > 0 ? 'pointer' : 'not-allowed',
@@ -7937,19 +8838,19 @@ function TrashManage() {
             </p>
           ) : (
             <div style={{
-              background: '#1e1e1e',
+              background: 'var(--bg-dark)',
               borderRadius: 8,
-              border: '1px solid #333',
+              border: '1px solid var(--border)',
               overflow: 'hidden'
             }}>
               <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                 <thead>
                   <tr style={{ background: '#2a2a2a' }}>
-                    <th style={{ padding: 12, textAlign: 'left', color: '#fff', borderBottom: '1px solid #333' }}>소스</th>
-                    <th style={{ padding: 12, textAlign: 'left', color: '#fff', borderBottom: '1px solid #333' }}>관계타입</th>
-                    <th style={{ padding: 12, textAlign: 'left', color: '#fff', borderBottom: '1px solid #333' }}>대상</th>
-                    <th style={{ padding: 12, textAlign: 'left', color: '#fff', borderBottom: '1px solid #333' }}>삭제일</th>
-                    <th style={{ padding: 12, textAlign: 'center', color: '#fff', borderBottom: '1px solid #333' }}>작업</th>
+                    <th style={{ padding: 12, textAlign: 'left', color: 'var(--text-primary)', borderBottom: '1px solid #333' }}>소스</th>
+                    <th style={{ padding: 12, textAlign: 'left', color: 'var(--text-primary)', borderBottom: '1px solid #333' }}>관계타입</th>
+                    <th style={{ padding: 12, textAlign: 'left', color: 'var(--text-primary)', borderBottom: '1px solid #333' }}>대상</th>
+                    <th style={{ padding: 12, textAlign: 'left', color: 'var(--text-primary)', borderBottom: '1px solid #333' }}>삭제일</th>
+                    <th style={{ padding: 12, textAlign: 'center', color: 'var(--text-primary)', borderBottom: '1px solid #333' }}>작업</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -7967,7 +8868,7 @@ function TrashManage() {
                           style={{
                             padding: '4px 12px',
                             background: '#28a745',
-                            color: '#fff',
+                            color: 'var(--text-primary)',
                             border: 'none',
                             borderRadius: 4,
                             cursor: 'pointer',
@@ -7982,7 +8883,7 @@ function TrashManage() {
                           style={{
                             padding: '4px 12px',
                             background: '#dc3545',
-                            color: '#fff',
+                            color: 'var(--text-primary)',
                             border: 'none',
                             borderRadius: 4,
                             cursor: 'pointer',
@@ -8013,7 +8914,7 @@ function TrashManage() {
                 style={{
                   padding: '8px 16px',
                   background: '#28a745',
-                  color: '#fff',
+                  color: 'var(--text-primary)',
                   border: 'none',
                   borderRadius: 4,
                   cursor: deletedCardTypes.length > 0 ? 'pointer' : 'not-allowed',
@@ -8028,7 +8929,7 @@ function TrashManage() {
                 style={{
                   padding: '8px 16px',
                   background: '#dc3545',
-                  color: '#fff',
+                  color: 'var(--text-primary)',
                   border: 'none',
                   borderRadius: 4,
                   cursor: deletedCardTypes.length > 0 ? 'pointer' : 'not-allowed',
@@ -8046,17 +8947,17 @@ function TrashManage() {
             </p>
           ) : (
             <div style={{
-              background: '#1e1e1e',
+              background: 'var(--bg-dark)',
               borderRadius: 8,
-              border: '1px solid #333',
+              border: '1px solid var(--border)',
               overflow: 'hidden'
             }}>
               <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                 <thead>
                   <tr style={{ background: '#2a2a2a' }}>
-                    <th style={{ padding: 12, textAlign: 'left', color: '#fff', borderBottom: '1px solid #333' }}>이름</th>
-                    <th style={{ padding: 12, textAlign: 'left', color: '#fff', borderBottom: '1px solid #333' }}>삭제일</th>
-                    <th style={{ padding: 12, textAlign: 'center', color: '#fff', borderBottom: '1px solid #333' }}>작업</th>
+                    <th style={{ padding: 12, textAlign: 'left', color: 'var(--text-primary)', borderBottom: '1px solid #333' }}>이름</th>
+                    <th style={{ padding: 12, textAlign: 'left', color: 'var(--text-primary)', borderBottom: '1px solid #333' }}>삭제일</th>
+                    <th style={{ padding: 12, textAlign: 'center', color: 'var(--text-primary)', borderBottom: '1px solid #333' }}>작업</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -8072,7 +8973,7 @@ function TrashManage() {
                           style={{
                             padding: '4px 12px',
                             background: '#28a745',
-                            color: '#fff',
+                            color: 'var(--text-primary)',
                             border: 'none',
                             borderRadius: 4,
                             cursor: 'pointer',
@@ -8087,7 +8988,7 @@ function TrashManage() {
                           style={{
                             padding: '4px 12px',
                             background: '#dc3545',
-                            color: '#fff',
+                            color: 'var(--text-primary)',
                             border: 'none',
                             borderRadius: 4,
                             cursor: 'pointer',
@@ -8118,7 +9019,7 @@ function TrashManage() {
                 style={{
                   padding: '8px 16px',
                   background: '#28a745',
-                  color: '#fff',
+                  color: 'var(--text-primary)',
                   border: 'none',
                   borderRadius: 4,
                   cursor: deletedRelationTypes.length > 0 ? 'pointer' : 'not-allowed',
@@ -8133,7 +9034,7 @@ function TrashManage() {
                 style={{
                   padding: '8px 16px',
                   background: '#dc3545',
-                  color: '#fff',
+                  color: 'var(--text-primary)',
                   border: 'none',
                   borderRadius: 4,
                   cursor: deletedRelationTypes.length > 0 ? 'pointer' : 'not-allowed',
@@ -8151,18 +9052,18 @@ function TrashManage() {
             </p>
           ) : (
             <div style={{
-              background: '#1e1e1e',
+              background: 'var(--bg-dark)',
               borderRadius: 8,
-              border: '1px solid #333',
+              border: '1px solid var(--border)',
               overflow: 'hidden'
             }}>
               <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                 <thead>
                   <tr style={{ background: '#2a2a2a' }}>
-                    <th style={{ padding: 12, textAlign: 'left', color: '#fff', borderBottom: '1px solid #333' }}>이름</th>
-                    <th style={{ padding: 12, textAlign: 'left', color: '#fff', borderBottom: '1px solid #333' }}>반대 관계</th>
-                    <th style={{ padding: 12, textAlign: 'left', color: '#fff', borderBottom: '1px solid #333' }}>삭제일</th>
-                    <th style={{ padding: 12, textAlign: 'center', color: '#fff', borderBottom: '1px solid #333' }}>작업</th>
+                    <th style={{ padding: 12, textAlign: 'left', color: 'var(--text-primary)', borderBottom: '1px solid #333' }}>이름</th>
+                    <th style={{ padding: 12, textAlign: 'left', color: 'var(--text-primary)', borderBottom: '1px solid #333' }}>반대 관계</th>
+                    <th style={{ padding: 12, textAlign: 'left', color: 'var(--text-primary)', borderBottom: '1px solid #333' }}>삭제일</th>
+                    <th style={{ padding: 12, textAlign: 'center', color: 'var(--text-primary)', borderBottom: '1px solid #333' }}>작업</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -8179,7 +9080,7 @@ function TrashManage() {
                           style={{
                             padding: '4px 12px',
                             background: '#28a745',
-                            color: '#fff',
+                            color: 'var(--text-primary)',
                             border: 'none',
                             borderRadius: 4,
                             cursor: 'pointer',
@@ -8194,7 +9095,7 @@ function TrashManage() {
                           style={{
                             padding: '4px 12px',
                             background: '#dc3545',
-                            color: '#fff',
+                            color: 'var(--text-primary)',
                             border: 'none',
                             borderRadius: 4,
                             cursor: 'pointer',
@@ -8308,7 +9209,7 @@ function Analytics() {
           top: 20,
           right: 20,
           background: '#0066cc',
-          color: '#fff',
+          color: 'var(--text-primary)',
           padding: '12px 20px',
           borderRadius: 6,
           boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
@@ -8374,8 +9275,8 @@ function Analytics() {
               { label: '평균 세션 시간', value: `${(stats.avg_session_duration?.avg_minutes || 0).toFixed(1)}분`, color: '#20c997' }
             ].map((stat, index) => (
               <div key={index} style={{
-                background: '#1e1e1e',
-                border: '1px solid #333',
+                background: 'var(--bg-dark)',
+                border: '1px solid var(--border)',
                 borderRadius: 8,
                 padding: 16,
                 textAlign: 'center'
@@ -8390,21 +9291,21 @@ function Analytics() {
 
           {/* 기능별 사용 빈도 */}
           <div style={{ marginBottom: 32 }}>
-            <h3 style={{ color: '#fff', marginBottom: 16 }}>기능별 사용 빈도</h3>
+            <h3 style={{ color: 'var(--text-primary)', marginBottom: 16 }}>기능별 사용 빈도</h3>
             <div style={{
-              background: '#1e1e1e',
+              background: 'var(--bg-dark)',
               borderRadius: 8,
-              border: '1px solid #333',
+              border: '1px solid var(--border)',
               overflow: 'hidden'
             }}>
               <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                 <thead>
                   <tr style={{ background: '#2a2a2a' }}>
-                    <th style={{ padding: 12, textAlign: 'left', color: '#fff', borderBottom: '1px solid #333' }}>기능</th>
-                    <th style={{ padding: 12, textAlign: 'center', color: '#fff', borderBottom: '1px solid #333' }}>총 사용</th>
-                    <th style={{ padding: 12, textAlign: 'center', color: '#fff', borderBottom: '1px solid #333' }}>성공</th>
-                    <th style={{ padding: 12, textAlign: 'center', color: '#fff', borderBottom: '1px solid #333' }}>에러</th>
-                    <th style={{ padding: 12, textAlign: 'center', color: '#fff', borderBottom: '1px solid #333' }}>평균 시간</th>
+                    <th style={{ padding: 12, textAlign: 'left', color: 'var(--text-primary)', borderBottom: '1px solid #333' }}>기능</th>
+                    <th style={{ padding: 12, textAlign: 'center', color: 'var(--text-primary)', borderBottom: '1px solid #333' }}>총 사용</th>
+                    <th style={{ padding: 12, textAlign: 'center', color: 'var(--text-primary)', borderBottom: '1px solid #333' }}>성공</th>
+                    <th style={{ padding: 12, textAlign: 'center', color: 'var(--text-primary)', borderBottom: '1px solid #333' }}>에러</th>
+                    <th style={{ padding: 12, textAlign: 'center', color: 'var(--text-primary)', borderBottom: '1px solid #333' }}>평균 시간</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -8433,21 +9334,21 @@ function Analytics() {
         <div>
           {/* 일별 활동 */}
           <div style={{ marginBottom: 32 }}>
-            <h3 style={{ color: '#fff', marginBottom: 16 }}>일별 활동 (최근 30일)</h3>
+            <h3 style={{ color: 'var(--text-primary)', marginBottom: 16 }}>일별 활동 (최근 30일)</h3>
             <div style={{
-              background: '#1e1e1e',
+              background: 'var(--bg-dark)',
               borderRadius: 8,
-              border: '1px solid #333',
+              border: '1px solid var(--border)',
               overflow: 'hidden'
             }}>
               <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                 <thead>
                   <tr style={{ background: '#2a2a2a' }}>
-                    <th style={{ padding: 12, textAlign: 'left', color: '#fff', borderBottom: '1px solid #333' }}>날짜</th>
-                    <th style={{ padding: 12, textAlign: 'center', color: '#fff', borderBottom: '1px solid #333' }}>총 액션</th>
-                    <th style={{ padding: 12, textAlign: 'center', color: '#fff', borderBottom: '1px solid #333' }}>세션</th>
-                    <th style={{ padding: 12, textAlign: 'center', color: '#fff', borderBottom: '1px solid #333' }}>카드 생성</th>
-                    <th style={{ padding: 12, textAlign: 'center', color: '#fff', borderBottom: '1px solid #333' }}>관계 생성</th>
+                    <th style={{ padding: 12, textAlign: 'left', color: 'var(--text-primary)', borderBottom: '1px solid #333' }}>날짜</th>
+                    <th style={{ padding: 12, textAlign: 'center', color: 'var(--text-primary)', borderBottom: '1px solid #333' }}>총 액션</th>
+                    <th style={{ padding: 12, textAlign: 'center', color: 'var(--text-primary)', borderBottom: '1px solid #333' }}>세션</th>
+                    <th style={{ padding: 12, textAlign: 'center', color: 'var(--text-primary)', borderBottom: '1px solid #333' }}>카드 생성</th>
+                    <th style={{ padding: 12, textAlign: 'center', color: 'var(--text-primary)', borderBottom: '1px solid #333' }}>관계 생성</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -8467,11 +9368,11 @@ function Analytics() {
 
           {/* 시간대별 활동 */}
           <div style={{ marginBottom: 32 }}>
-            <h3 style={{ color: '#fff', marginBottom: 16 }}>시간대별 활동</h3>
+            <h3 style={{ color: 'var(--text-primary)', marginBottom: 16 }}>시간대별 활동</h3>
             <div style={{
-              background: '#1e1e1e',
+              background: 'var(--bg-dark)',
               borderRadius: 8,
-              border: '1px solid #333',
+              border: '1px solid var(--border)',
               padding: 20
             }}>
               <div style={{ display: 'flex', alignItems: 'end', gap: 4, height: 200 }}>
@@ -8505,7 +9406,7 @@ function Analytics() {
                   );
                 })}
               </div>
-              <div style={{ textAlign: 'center', marginTop: 16, color: '#888', fontSize: 12 }}>
+              <div style={{ textAlign: 'center', marginTop: 16, color: 'var(--text-muted)', fontSize: 12 }}>
                 시간 (0-23시)
               </div>
             </div>
@@ -8516,25 +9417,25 @@ function Analytics() {
       {/* 에러 분석 탭 */}
       {activeTab === 'errors' && (
         <div>
-          <h3 style={{ color: '#fff', marginBottom: 16 }}>에러 분석</h3>
+          <h3 style={{ color: 'var(--text-primary)', marginBottom: 16 }}>에러 분석</h3>
           {errorAnalysis.length === 0 ? (
             <p style={{ color: '#666', textAlign: 'center', padding: 40 }}>
               에러가 발생하지 않았습니다.
             </p>
           ) : (
             <div style={{
-              background: '#1e1e1e',
+              background: 'var(--bg-dark)',
               borderRadius: 8,
-              border: '1px solid #333',
+              border: '1px solid var(--border)',
               overflow: 'hidden'
             }}>
               <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                 <thead>
                   <tr style={{ background: '#2a2a2a' }}>
-                    <th style={{ padding: 12, textAlign: 'left', color: '#fff', borderBottom: '1px solid #333' }}>기능</th>
-                    <th style={{ padding: 12, textAlign: 'left', color: '#fff', borderBottom: '1px solid #333' }}>에러 메시지</th>
-                    <th style={{ padding: 12, textAlign: 'center', color: '#fff', borderBottom: '1px solid #333' }}>발생 횟수</th>
-                    <th style={{ padding: 12, textAlign: 'left', color: '#fff', borderBottom: '1px solid #333' }}>마지막 발생</th>
+                    <th style={{ padding: 12, textAlign: 'left', color: 'var(--text-primary)', borderBottom: '1px solid #333' }}>기능</th>
+                    <th style={{ padding: 12, textAlign: 'left', color: 'var(--text-primary)', borderBottom: '1px solid #333' }}>에러 메시지</th>
+                    <th style={{ padding: 12, textAlign: 'center', color: 'var(--text-primary)', borderBottom: '1px solid #333' }}>발생 횟수</th>
+                    <th style={{ padding: 12, textAlign: 'left', color: 'var(--text-primary)', borderBottom: '1px solid #333' }}>마지막 발생</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -8558,22 +9459,22 @@ function Analytics() {
       {/* 세션 분석 탭 */}
       {activeTab === 'sessions' && (
         <div>
-          <h3 style={{ color: '#fff', marginBottom: 16 }}>세션 분석 (최근 50개)</h3>
+          <h3 style={{ color: 'var(--text-primary)', marginBottom: 16 }}>세션 분석 (최근 50개)</h3>
           <div style={{
-            background: '#1e1e1e',
+            background: 'var(--bg-dark)',
             borderRadius: 8,
-            border: '1px solid #333',
+            border: '1px solid var(--border)',
             overflow: 'hidden'
           }}>
             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
               <thead>
                 <tr style={{ background: '#2a2a2a' }}>
-                  <th style={{ padding: 12, textAlign: 'left', color: '#fff', borderBottom: '1px solid #333' }}>시작 시간</th>
-                  <th style={{ padding: 12, textAlign: 'center', color: '#fff', borderBottom: '1px solid #333' }}>지속 시간</th>
-                  <th style={{ padding: 12, textAlign: 'center', color: '#fff', borderBottom: '1px solid #333' }}>총 액션</th>
-                  <th style={{ padding: 12, textAlign: 'center', color: '#fff', borderBottom: '1px solid #333' }}>카드 생성</th>
-                  <th style={{ padding: 12, textAlign: 'center', color: '#fff', borderBottom: '1px solid #333' }}>관계 생성</th>
-                  <th style={{ padding: 12, textAlign: 'center', color: '#fff', borderBottom: '1px solid #333' }}>에러</th>
+                  <th style={{ padding: 12, textAlign: 'left', color: 'var(--text-primary)', borderBottom: '1px solid #333' }}>시작 시간</th>
+                  <th style={{ padding: 12, textAlign: 'center', color: 'var(--text-primary)', borderBottom: '1px solid #333' }}>지속 시간</th>
+                  <th style={{ padding: 12, textAlign: 'center', color: 'var(--text-primary)', borderBottom: '1px solid #333' }}>총 액션</th>
+                  <th style={{ padding: 12, textAlign: 'center', color: 'var(--text-primary)', borderBottom: '1px solid #333' }}>카드 생성</th>
+                  <th style={{ padding: 12, textAlign: 'center', color: 'var(--text-primary)', borderBottom: '1px solid #333' }}>관계 생성</th>
+                  <th style={{ padding: 12, textAlign: 'center', color: 'var(--text-primary)', borderBottom: '1px solid #333' }}>에러</th>
                 </tr>
               </thead>
               <tbody>
@@ -8596,10 +9497,10 @@ function Analytics() {
               </tbody>
             </table>
           </div>
-        </div>
-      )}
+          </div>
+        )}
       </div>
-    </div>
+            </div>
   );
 }
 
@@ -8616,6 +9517,10 @@ function RelationManage() {
   const [filterType, setFilterType] = useState('');
   const [sortBy, setSortBy] = useState('id'); // 'id', 'source', 'type', 'target'
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
+
+  // 좌우 패널 검색 상태
+  const [leftSearch, setLeftSearch] = useState('');
+  const [rightSearch, setRightSearch] = useState('');
 
   const load = async () => {
     const res = await window.electron.ipcRenderer.invoke('get-relations') as any;
@@ -8718,10 +9623,10 @@ function RelationManage() {
 
       {/* 관계 추가 섹션 */}
       <div style={{
-        background: '#1e1e1e',
+        background: 'var(--bg-dark)',
         padding: 20,
         borderRadius: 8,
-        border: '1px solid #333',
+        border: '1px solid var(--border)',
         marginBottom: 24
       }}>
         <h3 style={{ marginTop: 0, marginBottom: 16, color: '#fff' }}>새 관계 추가</h3>
@@ -8732,9 +9637,9 @@ function RelationManage() {
             style={{
               padding: '8px 12px',
               borderRadius: 4,
-              border: '1px solid #555',
+              border: '1px solid var(--border-dark)',
               background: '#2a2a2a',
-              color: '#fff',
+              color: 'var(--text-primary)',
               minWidth: 150
             }}
           >
@@ -8749,9 +9654,9 @@ function RelationManage() {
             style={{
               padding: '8px 12px',
               borderRadius: 4,
-              border: '1px solid #555',
+              border: '1px solid var(--border-dark)',
               background: '#2a2a2a',
-              color: '#fff',
+              color: 'var(--text-primary)',
               minWidth: 120
             }}
           >
@@ -8766,9 +9671,9 @@ function RelationManage() {
             style={{
               padding: '8px 12px',
               borderRadius: 4,
-              border: '1px solid #555',
+              border: '1px solid var(--border-dark)',
               background: '#2a2a2a',
-              color: '#fff',
+              color: 'var(--text-primary)',
               minWidth: 150
             }}
           >
@@ -8783,7 +9688,7 @@ function RelationManage() {
             style={{
               padding: '8px 16px',
               background: (!src || !rt || !tgt) ? '#555' : '#0066cc',
-              color: '#fff',
+              color: 'var(--text-primary)',
               border: 'none',
               borderRadius: 4,
               cursor: (!src || !rt || !tgt) ? 'not-allowed' : 'pointer'
@@ -8796,10 +9701,10 @@ function RelationManage() {
 
       {/* 필터링 섹션 */}
       <div style={{
-        background: '#1e1e1e',
+        background: 'var(--bg-dark)',
         padding: 20,
         borderRadius: 8,
-        border: '1px solid #333',
+        border: '1px solid var(--border)',
         marginBottom: 24
       }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
@@ -8819,9 +9724,9 @@ function RelationManage() {
             style={{
               padding: '8px 12px',
               borderRadius: 4,
-              border: '1px solid #555',
+              border: '1px solid var(--border-dark)',
               background: '#2a2a2a',
-              color: '#fff',
+              color: 'var(--text-primary)',
               minWidth: 200
             }}
           />
@@ -8833,9 +9738,9 @@ function RelationManage() {
             style={{
               padding: '8px 12px',
               borderRadius: 4,
-              border: '1px solid #555',
+              border: '1px solid var(--border-dark)',
               background: '#2a2a2a',
-              color: '#fff',
+              color: 'var(--text-primary)',
               minWidth: 120
             }}
           >
@@ -8852,9 +9757,9 @@ function RelationManage() {
             style={{
               padding: '8px 12px',
               borderRadius: 4,
-              border: '1px solid #555',
+              border: '1px solid var(--border-dark)',
               background: '#2a2a2a',
-              color: '#fff',
+              color: 'var(--text-primary)',
               minWidth: 100
             }}
           >
@@ -8870,8 +9775,8 @@ function RelationManage() {
             style={{
               padding: '8px 12px',
               background: '#444',
-              color: '#fff',
-              border: '1px solid #555',
+              color: 'var(--text-primary)',
+              border: '1px solid var(--border-dark)',
               borderRadius: 4,
               cursor: 'pointer',
               minWidth: 60
@@ -8885,8 +9790,8 @@ function RelationManage() {
             onClick={clearFilters}
             style={{
               padding: '8px 16px',
-              background: '#666',
-              color: '#fff',
+              background: 'var(--text-disabled)',
+              color: 'var(--text-primary)',
               border: 'none',
               borderRadius: 4,
               cursor: 'pointer'
@@ -8897,142 +9802,238 @@ function RelationManage() {
         </div>
       </div>
 
-      {/* 관계 목록 테이블 */}
-      <div style={{
-        background: '#1e1e1e',
-        borderRadius: 8,
-        border: '1px solid #333',
-        overflow: 'hidden'
-      }}>
-        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-          <thead>
-            <tr style={{ background: '#2a2a2a' }}>
-              <th style={{
-                padding: 12,
-                textAlign: 'left',
-                color: '#fff',
-                borderBottom: '1px solid #333',
-                cursor: 'pointer'
-              }} onClick={() => setSortBy('id')}>
-                ID {sortBy === 'id' && (sortOrder === 'asc' ? '↑' : '↓')}
-              </th>
-              <th style={{
-                padding: 12,
-                textAlign: 'left',
-                color: '#fff',
-                borderBottom: '1px solid #333',
-                cursor: 'pointer'
-              }} onClick={() => setSortBy('source')}>
-                Source {sortBy === 'source' && (sortOrder === 'asc' ? '↑' : '↓')}
-              </th>
-              <th style={{
-                padding: 12,
-                textAlign: 'left',
-                color: '#fff',
-                borderBottom: '1px solid #333',
-                cursor: 'pointer'
-              }} onClick={() => setSortBy('type')}>
-                Type {sortBy === 'type' && (sortOrder === 'asc' ? '↑' : '↓')}
-              </th>
-              <th style={{
-                padding: 12,
-                textAlign: 'left',
-                color: '#fff',
-                borderBottom: '1px solid #333',
-                cursor: 'pointer'
-              }} onClick={() => setSortBy('target')}>
-                Target {sortBy === 'target' && (sortOrder === 'asc' ? '↑' : '↓')}
-              </th>
-              <th style={{
-                padding: 12,
-                textAlign: 'center',
-                color: '#fff',
-                borderBottom: '1px solid #333'
-              }}>
-                작업
-              </th>
-            </tr>
-          </thead>
-        <tbody>
-            {sortedRelations.length === 0 ? (
-              <tr>
-                <td colSpan={5} style={{
-                  padding: 40,
-                  textAlign: 'center',
-                  color: '#666',
-                  borderBottom: '1px solid #333'
+      {/* 좌우 패널 관계 목록 */}
+      <div style={{ display: 'flex', gap: 16, height: '60vh' }}>
+        {/* 좌측 패널: Source 기준 */}
+        <div style={{ flex: 1, background: 'var(--bg-dark)', borderRadius: 8, border: '1px solid var(--border)', overflow: 'hidden' }}>
+          <div style={{ padding: 16, borderBottom: '1px solid #333', background: '#2a2a2a' }}>
+            <h3 style={{ margin: 0, marginBottom: 12, color: 'var(--text-primary)', fontSize: 16 }}>Source 기준 관계</h3>
+            <input
+              type="text"
+              placeholder="Source 카드 검색..."
+              value={leftSearch}
+              onChange={(e) => setLeftSearch(e.target.value)}
+                        style={{
+                width: '100%',
+                padding: 8,
+                background: 'var(--panel)',
+                          color: 'var(--text-primary)',
+                border: '1px solid var(--border-dark)',
+                          borderRadius: 4,
+                fontSize: 14,
+                boxSizing: 'border-box'
+              }}
+            />
+          </div>
+          <div style={{ height: 'calc(100% - 80px)', overflowY: 'auto', padding: 8 }}>
+            {relations
+              .filter(rel => !leftSearch || (rel.source_title || '').toLowerCase().includes(leftSearch.toLowerCase()))
+              .map((rel: any) => (
+                <div key={`left-${rel.relation_id}`} style={{
+                  padding: 12,
+                  margin: '4px 0',
+                  background: '#2a2a2a',
+                  borderRadius: 6,
+                  border: '1px solid #333'
                 }}>
-                  {relations.length === 0 ? '관계가 없습니다.' : '검색 조건에 맞는 관계가 없습니다.'}
-                </td>
-            </tr>
-            ) : (
-              sortedRelations.map(r => (
-                <tr key={r.relation_id} style={{ borderBottom: '1px solid #333' }}>
-                  <td style={{ padding: 12, color: '#888' }}>{r.relation_id}</td>
-                  <td style={{ padding: 12, color: '#fff' }}>{r.source_title || r.source}</td>
-                  <td style={{ padding: 12, color: '#0066cc' }}>{r.typename}</td>
-                  <td style={{ padding: 12, color: '#fff' }}>{r.target_title || r.target}</td>
-                  <td style={{ padding: 12, textAlign: 'center' }}>
-                    <button
-                      onClick={() => del(r.relation_id)}
-                      style={{
-                        padding: '4px 12px',
+                  <div style={{ color: '#0066cc', fontWeight: 'bold', marginBottom: 4 }}>
+                    {rel.source_title || rel.source}
+                  </div>
+                  <div style={{ color: 'var(--text-muted)', fontSize: 12, marginBottom: 4 }}>
+                    {rel.typename}
+                  </div>
+                  <div style={{ color: 'var(--text-primary)', marginBottom: 8 }}>
+                    → {rel.target_title || rel.target}
+                  </div>
+                  <div style={{ display: 'flex', gap: 8 }}>
+                      <button
+                      onClick={() => del(rel.relation_id)}
+                        style={{
+                        padding: '4px 8px',
+                          background: '#dc3545',
+                          color: 'var(--text-primary)',
+                          border: 'none',
+                          borderRadius: 4,
+                          cursor: 'pointer',
+                        fontSize: 11
+                        }}
+                      >
+                        삭제
+                      </button>
+                    </div>
+                </div>
+              ))}
+      </div>
+      </div>
+
+        {/* 세로 구분선 */}
+        <div style={{ width: 2, background: '#333' }}></div>
+
+        {/* 우측 패널: Source 기준 (다른 뷰) */}
+        <div style={{ flex: 1, background: 'var(--bg-dark)', borderRadius: 8, border: '1px solid var(--border)', overflow: 'hidden' }}>
+          <div style={{ padding: 16, borderBottom: '1px solid #333', background: '#2a2a2a' }}>
+            <h3 style={{ margin: 0, marginBottom: 12, color: 'var(--text-primary)', fontSize: 16 }}>Source 기준 관계 (우측)</h3>
+            <input
+              type="text"
+              placeholder="Source 카드 검색..."
+              value={rightSearch}
+              onChange={(e) => setRightSearch(e.target.value)}
+                style={{
+                  width: '100%',
+                padding: 8,
+                background: 'var(--panel)',
+                color: 'var(--text-primary)',
+                  border: '1px solid var(--border-dark)',
+                borderRadius: 4,
+                fontSize: 14,
+                boxSizing: 'border-box'
+              }}
+            />
+            </div>
+          <div style={{ height: 'calc(100% - 80px)', overflowY: 'auto', padding: 8 }}>
+            {relations
+              .filter(rel => !rightSearch || (rel.source_title || '').toLowerCase().includes(rightSearch.toLowerCase()))
+              .map((rel: any) => (
+                <div key={`right-${rel.relation_id}`} style={{
+                  padding: 12,
+                  margin: '4px 0',
+                  background: '#2a2a2a',
+                  borderRadius: 6,
+                  border: '1px solid #333'
+                }}>
+                  <div style={{ color: '#ff6b6b', fontWeight: 'bold', marginBottom: 4 }}>
+                    {rel.source_title || rel.source}
+            </div>
+                  <div style={{ color: 'var(--text-muted)', fontSize: 12, marginBottom: 4 }}>
+                    {rel.typename}
+            </div>
+                  <div style={{ color: 'var(--text-primary)', marginBottom: 8 }}>
+                    → {rel.target_title || rel.target}
+                  </div>
+                  <div style={{ display: 'flex', gap: 8 }}>
+              <button
+                      onClick={() => del(rel.relation_id)}
+                style={{
+                        padding: '4px 8px',
                         background: '#dc3545',
-                        color: '#fff',
-                        border: 'none',
+                  color: 'var(--text-primary)',
+                  border: 'none',
                         borderRadius: 4,
-                        cursor: 'pointer',
-                        fontSize: 12
-                      }}
-                    >
+                  cursor: 'pointer',
+                        fontSize: 11
+                }}
+              >
                       삭제
-                    </button>
-                  </td>
-                </tr>
-              ))
-            )}
-        </tbody>
-      </table>
+              </button>
+            </div>
+          </div>
+              ))}
+        </div>
+        </div>
       </div>
       </div>
     </div>
   );
 }
 
+// 언어 Context
+const LanguageContext = createContext<{
+  language: Language;
+  setLanguage: (lang: Language) => void;
+  t: (key: string) => string;
+}>({
+  language: 'ko',
+  setLanguage: () => {},
+  t: (key: string) => key,
+});
+
 export default function App() {
+  const [language, setLanguageState] = useState<Language>('ko');
+  const [languageInitialized, setLanguageInitialized] = useState(false);
+
+  // 언어 초기화
+  useEffect(() => {
+    const initializeLanguage = async () => {
+      await initLanguage();
+      setLanguageState(getLanguage());
+      setLanguageInitialized(true);
+    };
+    initializeLanguage();
+  }, []);
+
+  // 테마 초기화
+  useEffect(() => {
+    const initializeTheme = async () => {
+      try {
+        const result = await window.electron.ipcRenderer.invoke('get-settings');
+        if (result.success && result.data?.theme) {
+          const savedTheme = result.data.theme as Theme;
+          applyTheme(savedTheme);
+        } else {
+          // 기본 테마 적용
+          applyTheme('black-gray-white');
+        }
+      } catch (error) {
+        console.warn('테마 초기화 실패:', error);
+        // 기본 테마 적용
+        applyTheme('black-gray-white');
+      }
+    };
+    initializeTheme();
+  }, []);
+
+  // 언어 변경 핸들러
+  const handleLanguageChange = async (lang: Language) => {
+    setLanguage(lang);
+    setLanguageState(lang);
+    // IPC로 설정 저장
+    try {
+      await window.electron.ipcRenderer.invoke('save-settings', { language: lang });
+    } catch (error) {
+      console.error('Failed to save language setting:', error);
+    }
+  };
+
+  if (!languageInitialized) {
+    return <div style={{ height: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff' }}>Loading...</div>;
+  }
+
   return (
-    <Router>
-      <div style={{ height: '100vh', display: 'flex', flexDirection: 'column' }}>
-        <nav style={{ padding: 12, background: '#222', flexShrink: 0 }}>
-        {[
-          { to: '/', label: '홈' },
-          { to: '/visualization', label: '시각화' },
-          { to: '/cardtypes', label: '카드타입' },
-          { to: '/relationtypes', label: '관계타입' },
-          { to: '/relations', label: '관계' },
-            { to: '/projects', label: '프로젝트' },
-          { to: '/trash', label: '휴지통' },
-          { to: '/analytics', label: '분석' },
-          { to: '/settings', label: '설정' },
-        ].map((item) => (
-          <Link
-            key={item.to}
-            to={item.to}
-            onClick={() => {
-              // 페이지 방문 로깅
-              window.electron.ipcRenderer.invoke('log-page-visit', item.to.substring(1) || 'home');
-            }}
-            style={{ color: '#fff', marginRight: 16, textDecoration: 'none' }}
-          >
-            {item.label}
-          </Link>
-        ))}
-      </nav>
+    <LanguageContext.Provider value={{ language, setLanguage: handleLanguageChange, t }}>
+      <Router>
+        <div style={{ height: '100vh', display: 'flex', flexDirection: 'column' }}>
+          <nav style={{ padding: 12, background: '#222', flexShrink: 0 }}>
+          {[
+            { to: '/', label: t('home.title') },
+            { to: '/visualization', label: '시각화' },
+            { to: '/schedule-budget', label: '일정 & 예산' },
+            { to: '/cardtypes', label: '카드타입' },
+            { to: '/relationtypes', label: '관계타입' },
+            { to: '/relations', label: '관계' },
+              { to: '/projects', label: t('project.title') },
+            { to: '/trash', label: '휴지통' },
+            { to: '/analytics', label: '분석' },
+            { to: '/settings', label: t('common.settings') },
+          ].map((item) => (
+            <Link
+              key={item.to}
+              to={item.to}
+              onClick={() => {
+                // 페이지 방문 로깅
+                window.electron.ipcRenderer.invoke('log-page-visit', item.to.substring(1) || 'home');
+              }}
+              style={{ color: 'var(--text-primary)', marginRight: 16, textDecoration: 'none' }}
+            >
+              {item.label}
+            </Link>
+          ))}
+        </nav>
 
         <div style={{ flex: 1, overflow: 'hidden' }}>
       <Routes>
         <Route path="/" element={<Home />} />
         <Route path="/visualization" element={<Visualization />} />
+        <Route path="/schedule-budget" element={<ScheduleAndBudget />} />
         <Route path="/cardtypes" element={<CardTypeManage />} />
         <Route path="/relationtypes" element={<RelationTypeManage />} />
         <Route path="/relations" element={<RelationManage />} />
@@ -9044,6 +10045,7 @@ export default function App() {
         </div>
       </div>
     </Router>
+    </LanguageContext.Provider>
   );
 }
 
@@ -9173,6 +10175,73 @@ function RelationForm({ cards, refreshCards }: { cards: { id: string; title: str
     }
   };
 
+  // Source 필드 전용 Enter 키 핸들러 (카드 생성만)
+  const handleSourceKeyPress = async (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter') {
+      console.log('⌨️ [RelationForm] Source Enter 키 감지');
+      e.preventDefault();
+
+      const sourceValue = sourceCardText.trim();
+      if (!sourceValue) {
+        console.log('❌ [RelationForm] Source 값이 비어있음');
+        return;
+      }
+
+      // Target이 비어있으면 카드만 생성
+      if (!targetCardText.trim()) {
+        console.log('🎯 [RelationForm] Target이 비어있어서 카드만 생성');
+
+        // 이미 존재하는 카드인지 확인
+        const srcFound = cards.find(c => c.title === sourceValue);
+        if (srcFound) {
+          console.log('ℹ️ [RelationForm] 이미 존재하는 카드:', srcFound.title);
+          setSourceCardText(''); // 입력 필드 초기화
+          return;
+        }
+
+        try {
+          // 기본 카드타입 가져오기
+          const getDefaultCardType = () => {
+            try {
+              const savedSettings = localStorage.getItem('for-need-settings');
+              if (savedSettings) {
+                const parsed = JSON.parse(savedSettings);
+                return parsed.defaultCardType || 'todo';
+              }
+            } catch (error) {
+              console.warn('설정 불러오기 실패:', error);
+            }
+            return 'todo';
+          };
+
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const res = (await window.electron.ipcRenderer.invoke('create-card', {
+            title: sourceValue,
+            cardtype: getDefaultCardType()
+          })) as any;
+
+          if (res.success) {
+            console.log('✅ [RelationForm] 카드 생성 성공!');
+            setSourceCardText(''); // 입력 필드 초기화
+            refreshCards(); // 카드 목록 새로고침
+          } else {
+            console.log('❌ [RelationForm] 카드 생성 실패:', res.error);
+            if (res.error === 'duplicate-title') {
+              console.log('ℹ️ [RelationForm] 중복 제목으로 인한 실패');
+              setSourceCardText(''); // 입력 필드 초기화
+            }
+          }
+        } catch (error) {
+          console.error('❌ [RelationForm] 카드 생성 중 오류:', error);
+        }
+      } else {
+        // Target이 있으면 관계 생성
+        console.log('🔗 [RelationForm] Target이 있어서 관계 생성');
+        handleSubmit();
+      }
+    }
+  };
+
   return (
     <div>
       <h3>New Relation</h3>
@@ -9195,13 +10264,13 @@ function RelationForm({ cards, refreshCards }: { cards: { id: string; title: str
               placeholder="Source Card 이름 입력"
               value={sourceCardText}
               onChange={(e) => setSourceCardText(e.target.value)}
-              onKeyPress={handleKeyPress}
+              onKeyPress={handleSourceKeyPress}
               style={{
                 flex: '1 0 150px',
                 padding: '8px',
                 backgroundColor: '#333',
-                color: '#fff',
-                border: '1px solid #555',
+                color: 'var(--text-primary)',
+                border: '1px solid var(--border-dark)',
                 borderRadius: '4px'
               }}
             />
@@ -9226,8 +10295,8 @@ function RelationForm({ cards, refreshCards }: { cards: { id: string; title: str
                 flex: '1 0 150px',
                 padding: '8px',
                 backgroundColor: '#333',
-                color: '#fff',
-                border: '1px solid #555',
+                color: 'var(--text-primary)',
+                border: '1px solid var(--border-dark)',
                 borderRadius: '4px'
               }}
             />

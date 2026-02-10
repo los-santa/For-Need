@@ -32,7 +32,7 @@ db.exec(`
 `);
 
 // 기본 카드타입 데이터 삽입 (존재하지 않을 때만)
-const defaultTypes = ['todo','entity','habit','action','destination','IF'];
+const defaultTypes = ['no type yet','todo','entity','habit','action','destination','IF'];
 defaultTypes.forEach(name=>{
   db.prepare("INSERT OR IGNORE INTO CARDTYPES (cardtype_name, createdat) VALUES (?, datetime('now'))").run(name);
 });
