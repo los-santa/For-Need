@@ -2053,10 +2053,10 @@ ipcMain.handle('get-project-cards', async (event, projectId: string) => {
       SELECT
         c.*,
         ct.cardtype_name,
-        COUNT(r.id) as relation_count
+        COUNT(DISTINCT r.relation_id) as relation_count
       FROM CARDS c
       LEFT JOIN CARDTYPES ct ON c.cardtype = ct.cardtype_id
-      LEFT JOIN RELATIONS r ON (c.id = r.source_card OR c.id = r.target_card) AND r.deleted_at IS NULL
+      LEFT JOIN RELATION r ON (c.id = r.source OR c.id = r.target) AND r.deleted_at IS NULL
       WHERE c.project_id = ? AND c.deleted_at IS NULL
       GROUP BY c.id
       ORDER BY c.createdat DESC
@@ -2236,12 +2236,31 @@ ipcMain.handle('get-local-databases', async () => {
 // 로컬 DB 삭제
 ipcMain.handle('delete-local-database', async (event, dbPath: string) => {
   try {
-    if (fs.existsSync(dbPath)) {
-      fs.unlinkSync(dbPath);
-      return { success: true };
-    } else {
+    const localDbDir = path.join(app.getPath('userData'), 'local-databases');
+    const resolvedLocalDbDir = path.resolve(localDbDir);
+    const resolvedDbPath = path.resolve(dbPath);
+    const relativePath = path.relative(resolvedLocalDbDir, resolvedDbPath);
+
+    if (relativePath.startsWith('..') || path.isAbsolute(relativePath)) {
+      return { success: false, error: 'Invalid database path' };
+    }
+
+    if (path.extname(resolvedDbPath).toLowerCase() !== '.db') {
+      return { success: false, error: 'Invalid database file' };
+    }
+
+    const currentDbPath = path.resolve(getDatabasePath());
+    if (resolvedDbPath === currentDbPath) {
+      return { success: false, error: 'Cannot delete the active database' };
+    }
+
+    if (!fs.existsSync(resolvedDbPath)) {
       return { success: false, error: 'File not found' };
     }
+
+    fs.unlinkSync(resolvedDbPath);
+    removeFromRecentDbPaths(resolvedDbPath);
+    return { success: true };
   } catch (error) {
     log.error('Failed to delete local database:', error);
     return { success: false, error: 'Failed to delete local database' };
