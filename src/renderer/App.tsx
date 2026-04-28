@@ -741,6 +741,11 @@ function DatabaseSettings() {
 
   // 로컬 DB 삭제
   const handleDeleteLocalDb = async (dbPath: string, dbName: string) => {
+    if (dbPath === dbSettings?.dbPath) {
+      setMessage('현재 사용 중인 데이터베이스는 삭제할 수 없습니다.');
+      return;
+    }
+
     if (!window.confirm(`정말로 "${dbName}" 데이터베이스를 삭제하시겠습니까?\n\n⚠️ 이 작업은 되돌릴 수 없습니다.`)) {
       return;
     }
@@ -994,13 +999,14 @@ function DatabaseSettings() {
                       </button>
                       <button
                         onClick={() => handleDeleteLocalDb(db.path, db.displayName)}
+                        disabled={db.path === dbSettings?.dbPath}
                         style={{
-                          background: '#f44336',
+                          background: db.path === dbSettings?.dbPath ? '#666' : '#f44336',
                           color: 'var(--text-primary)',
                           border: 'none',
                           padding: '6px 12px',
                           borderRadius: 4,
-                          cursor: 'pointer',
+                          cursor: db.path === dbSettings?.dbPath ? 'not-allowed' : 'pointer',
                           fontSize: 11,
                           fontWeight: 'bold'
                         }}
