@@ -29,6 +29,10 @@ import {
 import { v4 as uuidv4 } from 'uuid';
 import { randomUUID } from 'crypto';
 import { resolveHtmlPath } from './util';
+import {
+  getLocalDatabaseDir,
+  resolveLocalDatabaseFilePath,
+} from './localDatabasePaths';
 
 // 세션 관리
 let currentSessionId = uuidv4();
@@ -2201,7 +2205,7 @@ ipcMain.handle('remove-recent-db-path', async (event, dbPath: string) => {
 // 로컬 DB 목록 가져오기
 ipcMain.handle('get-local-databases', async () => {
   try {
-    const localDbDir = path.join(app.getPath('userData'), 'local-databases');
+    const localDbDir = getLocalDatabaseDir(app.getPath('userData'));
 
     if (!fs.existsSync(localDbDir)) {
       fs.mkdirSync(localDbDir, { recursive: true });
@@ -2236,8 +2240,15 @@ ipcMain.handle('get-local-databases', async () => {
 // 로컬 DB 삭제
 ipcMain.handle('delete-local-database', async (event, dbPath: string) => {
   try {
-    if (fs.existsSync(dbPath)) {
-      fs.unlinkSync(dbPath);
+    const localDbDir = getLocalDatabaseDir(app.getPath('userData'));
+    const resolvedDbPath = resolveLocalDatabaseFilePath(dbPath, localDbDir);
+
+    if (!resolvedDbPath) {
+      return { success: false, error: 'Invalid local database path' };
+    }
+
+    if (fs.existsSync(resolvedDbPath)) {
+      fs.unlinkSync(resolvedDbPath);
       return { success: true };
     } else {
       return { success: false, error: 'File not found' };
