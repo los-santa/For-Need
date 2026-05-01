@@ -9,9 +9,17 @@
  * `./src/main.js` using webpack. This gives us some performance wins.
  */
 import path from 'path';
-import { app, BrowserWindow, ipcMain } from 'electron';
+import fs from 'fs';
+import { app, BrowserWindow, ipcMain, dialog, shell } from 'electron';
 import log from 'electron-log';
 import db from './initdb';
+import {
+  loadSettings,
+  saveSettings,
+  setDatabasePath,
+  getRecentDbPaths,
+  removeFromRecentDbPaths,
+} from './settings';
 import {
   HabitExpansionInput,
   HabitProperties,
@@ -2053,10 +2061,10 @@ ipcMain.handle('get-project-cards', async (event, projectId: string) => {
       SELECT
         c.*,
         ct.cardtype_name,
-        COUNT(r.id) as relation_count
+        COUNT(r.relation_id) as relation_count
       FROM CARDS c
       LEFT JOIN CARDTYPES ct ON c.cardtype = ct.cardtype_id
-      LEFT JOIN RELATIONS r ON (c.id = r.source_card OR c.id = r.target_card) AND r.deleted_at IS NULL
+      LEFT JOIN RELATION r ON (c.id = r.source OR c.id = r.target) AND r.deleted_at IS NULL
       WHERE c.project_id = ? AND c.deleted_at IS NULL
       GROUP BY c.id
       ORDER BY c.createdat DESC
@@ -2072,12 +2080,6 @@ ipcMain.handle('get-project-cards', async (event, projectId: string) => {
 // =========================
 // 설정 관리 기능
 // =========================
-
-import { dialog } from 'electron';
-import { loadSettings, saveSettings, setDatabasePath, getDatabasePath, getRecentDbPaths, removeFromRecentDbPaths } from './settings';
-import { shell } from 'electron';
-import path from 'path';
-import fs from 'fs';
 
 // 현재 설정 가져오기
 ipcMain.handle('get-settings', async () => {
