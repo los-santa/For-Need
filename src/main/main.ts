@@ -9,7 +9,7 @@
  * `./src/main.js` using webpack. This gives us some performance wins.
  */
 import path from 'path';
-import { app, BrowserWindow, ipcMain } from 'electron';
+import { app, BrowserWindow, dialog, ipcMain, shell } from 'electron';
 import log from 'electron-log';
 import db from './initdb';
 import {
@@ -2073,10 +2073,7 @@ ipcMain.handle('get-project-cards', async (event, projectId: string) => {
 // 설정 관리 기능
 // =========================
 
-import { dialog } from 'electron';
 import { loadSettings, saveSettings, setDatabasePath, getDatabasePath, getRecentDbPaths, removeFromRecentDbPaths } from './settings';
-import { shell } from 'electron';
-import path from 'path';
 import fs from 'fs';
 
 // 현재 설정 가져오기
