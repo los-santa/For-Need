@@ -164,17 +164,16 @@ db.exec(`
   )
 `);
 
-// 기존 카드들을 'todo' 카드타입으로 마이그레이션
+// 기존 카드 중 타입이 비어 있는 항목만 'todo' 카드타입으로 보정
 try {
-  console.log('Migrating existing cards to todo cardtype...');
+  console.log('Backfilling cards without a cardtype to todo cardtype...');
 
   // 'todo' 카드타입 ID 가져오기
   const todoCardType = db.prepare("SELECT cardtype_id FROM CARDTYPES WHERE cardtype_name = 'todo'").get() as any;
 
   if (todoCardType) {
-    // 카드타입이 NULL이거나 다른 카드타입인 모든 카드를 'todo'로 업데이트
-    const updateResult = db.prepare("UPDATE CARDS SET cardtype = ? WHERE cardtype IS NULL OR cardtype != ?")
-      .run(todoCardType.cardtype_id, todoCardType.cardtype_id);
+    const updateResult = db.prepare("UPDATE CARDS SET cardtype = ? WHERE cardtype IS NULL")
+      .run(todoCardType.cardtype_id);
 
     if (updateResult.changes > 0) {
       console.log(`Updated ${updateResult.changes} cards to 'todo' cardtype`);
