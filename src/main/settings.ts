@@ -23,6 +23,16 @@ const defaultSettings: AppSettings = {
   theme: 'black-gray-white' // 기본 테마는 black-gray-white
 };
 
+function backupCorruptSettings(): void {
+  if (!fs.existsSync(settingsPath)) {
+    return;
+  }
+
+  const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+  const backupPath = `${settingsPath}.corrupt-${timestamp}`;
+  fs.copyFileSync(settingsPath, backupPath);
+}
+
 // 설정 디렉토리 생성
 if (!fs.existsSync(settingsDir)) {
   fs.mkdirSync(settingsDir, { recursive: true });
@@ -38,6 +48,11 @@ export function loadSettings(): AppSettings {
     }
   } catch (error) {
     console.warn('Failed to load settings:', error);
+    try {
+      backupCorruptSettings();
+    } catch (backupError) {
+      console.warn('Failed to back up corrupt settings:', backupError);
+    }
   }
 
   // 기본 설정으로 파일 생성
@@ -48,7 +63,9 @@ export function loadSettings(): AppSettings {
 // 설정 저장
 export function saveSettings(settings: AppSettings): void {
   try {
-    fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 2));
+    const tempPath = `${settingsPath}.tmp`;
+    fs.writeFileSync(tempPath, JSON.stringify(settings, null, 2));
+    fs.renameSync(tempPath, settingsPath);
   } catch (error) {
     console.error('Failed to save settings:', error);
   }

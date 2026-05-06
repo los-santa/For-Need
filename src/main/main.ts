@@ -8,8 +8,9 @@
  * When running `npm run build` or `npm run build:main`, this file is compiled to
  * `./src/main.js` using webpack. This gives us some performance wins.
  */
+import fs from 'fs';
 import path from 'path';
-import { app, BrowserWindow, ipcMain } from 'electron';
+import { app, BrowserWindow, ipcMain, dialog, shell } from 'electron';
 import log from 'electron-log';
 import db from './initdb';
 import {
@@ -29,6 +30,14 @@ import {
 import { v4 as uuidv4 } from 'uuid';
 import { randomUUID } from 'crypto';
 import { resolveHtmlPath } from './util';
+import {
+  loadSettings,
+  saveSettings,
+  setDatabasePath,
+  getDatabasePath,
+  getRecentDbPaths,
+  removeFromRecentDbPaths
+} from './settings';
 
 // 세션 관리
 let currentSessionId = uuidv4();
@@ -2053,10 +2062,10 @@ ipcMain.handle('get-project-cards', async (event, projectId: string) => {
       SELECT
         c.*,
         ct.cardtype_name,
-        COUNT(r.id) as relation_count
+        COUNT(r.relation_id) as relation_count
       FROM CARDS c
       LEFT JOIN CARDTYPES ct ON c.cardtype = ct.cardtype_id
-      LEFT JOIN RELATIONS r ON (c.id = r.source_card OR c.id = r.target_card) AND r.deleted_at IS NULL
+      LEFT JOIN RELATION r ON (c.id = r.source OR c.id = r.target) AND r.deleted_at IS NULL
       WHERE c.project_id = ? AND c.deleted_at IS NULL
       GROUP BY c.id
       ORDER BY c.createdat DESC
@@ -2072,12 +2081,6 @@ ipcMain.handle('get-project-cards', async (event, projectId: string) => {
 // =========================
 // 설정 관리 기능
 // =========================
-
-import { dialog } from 'electron';
-import { loadSettings, saveSettings, setDatabasePath, getDatabasePath, getRecentDbPaths, removeFromRecentDbPaths } from './settings';
-import { shell } from 'electron';
-import path from 'path';
-import fs from 'fs';
 
 // 현재 설정 가져오기
 ipcMain.handle('get-settings', async () => {
@@ -2236,12 +2239,34 @@ ipcMain.handle('get-local-databases', async () => {
 // 로컬 DB 삭제
 ipcMain.handle('delete-local-database', async (event, dbPath: string) => {
   try {
-    if (fs.existsSync(dbPath)) {
-      fs.unlinkSync(dbPath);
-      return { success: true };
-    } else {
+    const localDbDir = path.join(app.getPath('userData'), 'local-databases');
+    const resolvedDbPath = path.resolve(dbPath);
+    const resolvedLocalDbDir = path.resolve(localDbDir);
+    const relativePath = path.relative(resolvedLocalDbDir, resolvedDbPath);
+
+    if (
+      relativePath.startsWith('..') ||
+      path.isAbsolute(relativePath) ||
+      path.extname(resolvedDbPath) !== '.db'
+    ) {
+      return { success: false, error: 'Invalid local database path' };
+    }
+
+    if (path.resolve(getDatabasePath()) === resolvedDbPath) {
+      return { success: false, error: 'Cannot delete the active database' };
+    }
+
+    if (!fs.existsSync(resolvedDbPath)) {
       return { success: false, error: 'File not found' };
     }
+
+    const stat = fs.statSync(resolvedDbPath);
+    if (!stat.isFile()) {
+      return { success: false, error: 'Path is not a file' };
+    }
+
+    fs.unlinkSync(resolvedDbPath);
+    return { success: true };
   } catch (error) {
     log.error('Failed to delete local database:', error);
     return { success: false, error: 'Failed to delete local database' };
