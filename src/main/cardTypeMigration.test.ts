@@ -1,4 +1,7 @@
-import { migrateCardsWithoutType, UNTYPED_CARDTYPE_NAME } from './cardTypeMigration';
+import {
+  migrateCardsWithoutType,
+  UNTYPED_CARDTYPE_NAME,
+} from './cardTypeMigration';
 
 describe('migrateCardsWithoutType', () => {
   it('only assigns the fallback type to cards whose cardtype is NULL', () => {
@@ -44,7 +47,7 @@ describe('migrateCardsWithoutType', () => {
   it('does not update cards if the fallback card type is unavailable', () => {
     const run = jest.fn();
     const db = {
-      prepare(sql: string) {
+      prepare() {
         return {
           get: jest.fn(() => undefined),
           run,
@@ -52,7 +55,10 @@ describe('migrateCardsWithoutType', () => {
       },
     };
 
-    expect(migrateCardsWithoutType(db)).toEqual({ changes: 0, cardtypeId: null });
+    expect(migrateCardsWithoutType(db)).toEqual({
+      changes: 0,
+      cardtypeId: null,
+    });
     expect(run).not.toHaveBeenCalled();
   });
 });

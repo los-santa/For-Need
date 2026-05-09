@@ -3,7 +3,10 @@ import { app } from 'electron';
 import path from 'path';
 import fs from 'fs';
 import { getDatabasePath } from './settings';
-import { migrateCardsWithoutType, UNTYPED_CARDTYPE_NAME } from './cardTypeMigration';
+import {
+  migrateCardsWithoutType,
+  UNTYPED_CARDTYPE_NAME,
+} from './cardTypeMigration';
 
 // 설정에서 DB 경로 가져오기
 const dbPath = getDatabasePath();
@@ -167,12 +170,16 @@ db.exec(`
 
 // 기존 NULL 카드타입만 최신 기본 타입으로 마이그레이션
 try {
-  console.log(`Migrating cards without cardtype to '${UNTYPED_CARDTYPE_NAME}'...`);
+  console.log(
+    `Migrating cards without cardtype to '${UNTYPED_CARDTYPE_NAME}'...`,
+  );
 
   const updateResult = migrateCardsWithoutType(db);
 
   if (updateResult.changes > 0) {
-    console.log(`Updated ${updateResult.changes} cards to '${UNTYPED_CARDTYPE_NAME}' cardtype`);
+    console.log(
+      `Updated ${updateResult.changes} cards to '${UNTYPED_CARDTYPE_NAME}' cardtype`,
+    );
   }
 } catch (error) {
   console.log('Card migration error:', error);
