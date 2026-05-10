@@ -38,9 +38,10 @@ export function loadSettings(): AppSettings {
     }
   } catch (error) {
     console.warn('Failed to load settings:', error);
+    return defaultSettings;
   }
 
-  // 기본 설정으로 파일 생성
+  // 설정 파일이 없을 때만 기본 설정 파일을 생성한다.
   saveSettings(defaultSettings);
   return defaultSettings;
 }
