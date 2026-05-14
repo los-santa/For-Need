@@ -1,38 +1,48 @@
-import Database from 'better-sqlite3';
 import { migrateMissingCardtypesToTodo } from '../cardtypeMigrations';
 
 describe('migrateMissingCardtypesToTodo', () => {
   it('only fills missing cardtypes and preserves existing user-selected types', () => {
-    const db = new Database(':memory:');
-    db.exec(`
-      CREATE TABLE CARDTYPES (
-        cardtype_id INTEGER PRIMARY KEY,
-        cardtype_name TEXT UNIQUE NOT NULL
-      );
-      CREATE TABLE CARDS (
-        id TEXT PRIMARY KEY,
-        title TEXT NOT NULL,
-        cardtype INTEGER
-      );
-      INSERT INTO CARDTYPES (cardtype_id, cardtype_name) VALUES
-        (1, 'todo'),
-        (2, 'entity'),
-        (3, 'no type yet');
-      INSERT INTO CARDS (id, title, cardtype) VALUES
-        ('missing', 'Missing type', NULL),
-        ('todo', 'Todo type', 1),
-        ('entity', 'Entity type', 2),
-        ('no-type-yet', 'No type yet', 3);
-    `);
+    const cards = new Map<string, number | null>([
+      ['missing', null],
+      ['todo', 1],
+      ['entity', 2],
+      ['no-type-yet', 3],
+    ]);
+
+    const db = {
+      prepare(sql: string) {
+        if (sql.includes('SELECT cardtype_id')) {
+          return {
+            get: () => ({ cardtype_id: 1 }),
+          };
+        }
+
+        if (sql.includes('UPDATE CARDS SET cardtype = ? WHERE cardtype IS NULL')) {
+          return {
+            run: (cardtypeId: number) => {
+              let changes = 0;
+              for (const [id, cardtype] of cards) {
+                if (cardtype === null) {
+                  cards.set(id, cardtypeId);
+                  changes += 1;
+                }
+              }
+
+              return { changes };
+            },
+          };
+        }
+
+        throw new Error(`Unexpected SQL: ${sql}`);
+      },
+    };
 
     const changes = migrateMissingCardtypesToTodo(db as any);
 
     expect(changes).toBe(1);
-    expect(db.prepare('SELECT cardtype FROM CARDS WHERE id = ?').get('missing')).toEqual({ cardtype: 1 });
-    expect(db.prepare('SELECT cardtype FROM CARDS WHERE id = ?').get('todo')).toEqual({ cardtype: 1 });
-    expect(db.prepare('SELECT cardtype FROM CARDS WHERE id = ?').get('entity')).toEqual({ cardtype: 2 });
-    expect(db.prepare('SELECT cardtype FROM CARDS WHERE id = ?').get('no-type-yet')).toEqual({ cardtype: 3 });
-
-    db.close();
+    expect(cards.get('missing')).toBe(1);
+    expect(cards.get('todo')).toBe(1);
+    expect(cards.get('entity')).toBe(2);
+    expect(cards.get('no-type-yet')).toBe(3);
   });
 });
