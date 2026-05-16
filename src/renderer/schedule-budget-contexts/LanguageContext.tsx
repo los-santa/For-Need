@@ -8,6 +8,10 @@ import {
 
 type Language = "ko" | "en";
 
+export const normalizeLanguage = (value: string | null): Language => {
+  return value === "ko" || value === "en" ? value : "ko";
+};
+
 interface LanguageContextType {
   language: Language;
   setLanguage: (lang: Language) => void;
@@ -260,7 +264,7 @@ export function LanguageProvider({
 }) {
   const [language, setLanguage] = useState<Language>(() => {
     const saved = localStorage.getItem("language");
-    return (saved as Language) || "ko";
+    return normalizeLanguage(saved);
   });
 
   useEffect(() => {
@@ -269,7 +273,7 @@ export function LanguageProvider({
 
   const t = (key: string): string => {
     return (
-      translations[language][
+      translations[language]?.[
         key as keyof typeof translations.ko
       ] || key
     );
