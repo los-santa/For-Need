@@ -15,42 +15,7 @@ import { Button } from "./schedule-budget-components/ui/button";
 import { Separator } from "./schedule-budget-components/ui/separator";
 import { Wallet } from "lucide-react";
 import { LanguageProvider, useLanguage } from "./schedule-budget-contexts/LanguageContext";
-
-// Helper to load from localStorage
-const loadState = <T,>(key: string, defaultValue: T): T => {
-  const saved = localStorage.getItem(key);
-  if (!saved) return defaultValue;
-  try {
-    const parsed = JSON.parse(saved);
-    // Recursively convert date strings back to Date objects
-    const reviveDates = (obj: any): any => {
-      if (obj === null || obj === undefined) return obj;
-      if (typeof obj === 'string' && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}.\d{3}Z$/.test(obj)) {
-        return new Date(obj);
-      }
-      if (Array.isArray(obj)) {
-        return obj.map(reviveDates);
-      }
-      if (typeof obj === 'object') {
-        const newObj: any = {};
-        for (const key in obj) {
-          newObj[key] = reviveDates(obj[key]);
-        }
-        return newObj;
-      }
-      return obj;
-    };
-    return reviveDates(parsed);
-  } catch (e) {
-    console.error(`Error loading state ${key}`, e);
-    return defaultValue;
-  }
-};
-
-// Helper to save to localStorage
-const saveState = <T,>(key: string, value: T) => {
-  localStorage.setItem(key, JSON.stringify(value));
-};
+import { loadState, saveState } from "./scheduleBudgetStorage";
 
 function ScheduleAndBudgetContent() {
   const { t } = useLanguage();
