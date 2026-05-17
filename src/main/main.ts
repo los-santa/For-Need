@@ -2053,10 +2053,10 @@ ipcMain.handle('get-project-cards', async (event, projectId: string) => {
       SELECT
         c.*,
         ct.cardtype_name,
-        COUNT(r.id) as relation_count
+        COUNT(DISTINCT r.relation_id) as relation_count
       FROM CARDS c
       LEFT JOIN CARDTYPES ct ON c.cardtype = ct.cardtype_id
-      LEFT JOIN RELATIONS r ON (c.id = r.source_card OR c.id = r.target_card) AND r.deleted_at IS NULL
+      LEFT JOIN RELATION r ON (c.id = r.source OR c.id = r.target) AND r.deleted_at IS NULL
       WHERE c.project_id = ? AND c.deleted_at IS NULL
       GROUP BY c.id
       ORDER BY c.createdat DESC
