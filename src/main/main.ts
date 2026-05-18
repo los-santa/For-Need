@@ -9,7 +9,8 @@
  * `./src/main.js` using webpack. This gives us some performance wins.
  */
 import path from 'path';
-import { app, BrowserWindow, ipcMain } from 'electron';
+import fs from 'fs';
+import { app, BrowserWindow, dialog, ipcMain, shell } from 'electron';
 import log from 'electron-log';
 import db from './initdb';
 import {
@@ -29,6 +30,13 @@ import {
 import { v4 as uuidv4 } from 'uuid';
 import { randomUUID } from 'crypto';
 import { resolveHtmlPath } from './util';
+import {
+  loadSettings,
+  saveSettings,
+  setDatabasePath,
+  getRecentDbPaths,
+  removeFromRecentDbPaths,
+} from './settings';
 
 // 세션 관리
 let currentSessionId = uuidv4();
@@ -2072,12 +2080,6 @@ ipcMain.handle('get-project-cards', async (event, projectId: string) => {
 // =========================
 // 설정 관리 기능
 // =========================
-
-import { dialog } from 'electron';
-import { loadSettings, saveSettings, setDatabasePath, getDatabasePath, getRecentDbPaths, removeFromRecentDbPaths } from './settings';
-import { shell } from 'electron';
-import path from 'path';
-import fs from 'fs';
 
 // 현재 설정 가져오기
 ipcMain.handle('get-settings', async () => {
