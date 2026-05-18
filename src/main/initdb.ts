@@ -169,10 +169,13 @@ try {
   console.log('Migrating untyped existing cards to todo cardtype...');
 
   // 'todo' 카드타입 ID 가져오기
-  const todoCardType = db.prepare("SELECT cardtype_id FROM CARDTYPES WHERE cardtype_name = 'todo'").get() as any;
+  const todoCardType = db
+    .prepare("SELECT cardtype_id FROM CARDTYPES WHERE cardtype_name = 'todo'")
+    .get() as any;
 
   if (todoCardType) {
-    const updateResult = db.prepare("UPDATE CARDS SET cardtype = ? WHERE cardtype IS NULL")
+    const updateResult = db
+      .prepare('UPDATE CARDS SET cardtype = ? WHERE cardtype IS NULL')
       .run(todoCardType.cardtype_id);
 
     if (updateResult.changes > 0) {
