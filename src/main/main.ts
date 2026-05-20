@@ -9,7 +9,8 @@
  * `./src/main.js` using webpack. This gives us some performance wins.
  */
 import path from 'path';
-import { app, BrowserWindow, ipcMain } from 'electron';
+import fs from 'fs';
+import { app, BrowserWindow, ipcMain, dialog, shell } from 'electron';
 import log from 'electron-log';
 import db from './initdb';
 import {
@@ -2073,11 +2074,7 @@ ipcMain.handle('get-project-cards', async (event, projectId: string) => {
 // 설정 관리 기능
 // =========================
 
-import { dialog } from 'electron';
 import { loadSettings, saveSettings, setDatabasePath, getDatabasePath, getRecentDbPaths, removeFromRecentDbPaths } from './settings';
-import { shell } from 'electron';
-import path from 'path';
-import fs from 'fs';
 
 // 현재 설정 가져오기
 ipcMain.handle('get-settings', async () => {
@@ -2236,12 +2233,25 @@ ipcMain.handle('get-local-databases', async () => {
 // 로컬 DB 삭제
 ipcMain.handle('delete-local-database', async (event, dbPath: string) => {
   try {
-    if (fs.existsSync(dbPath)) {
-      fs.unlinkSync(dbPath);
-      return { success: true };
-    } else {
+    const localDbDir = path.resolve(app.getPath('userData'), 'local-databases');
+    const targetPath = path.resolve(dbPath);
+    const currentDbPath = path.resolve(getDatabasePath());
+    const isInsideLocalDbDir = targetPath.startsWith(`${localDbDir}${path.sep}`);
+
+    if (!isInsideLocalDbDir) {
+      return { success: false, error: 'Cannot delete database outside local database folder' };
+    }
+
+    if (targetPath === currentDbPath) {
+      return { success: false, error: 'Cannot delete the active database' };
+    }
+
+    if (!fs.existsSync(targetPath)) {
       return { success: false, error: 'File not found' };
     }
+
+    fs.unlinkSync(targetPath);
+    return { success: true };
   } catch (error) {
     log.error('Failed to delete local database:', error);
     return { success: false, error: 'Failed to delete local database' };
