@@ -16,6 +16,8 @@ import { Separator } from "./schedule-budget-components/ui/separator";
 import { Wallet } from "lucide-react";
 import { LanguageProvider, useLanguage } from "./schedule-budget-contexts/LanguageContext";
 
+const corruptedStateKeys = new Set<string>();
+
 // Helper to load from localStorage
 const loadState = <T,>(key: string, defaultValue: T): T => {
   const saved = localStorage.getItem(key);
@@ -43,13 +45,23 @@ const loadState = <T,>(key: string, defaultValue: T): T => {
     return reviveDates(parsed);
   } catch (e) {
     console.error(`Error loading state ${key}`, e);
+    corruptedStateKeys.add(key);
     return defaultValue;
   }
 };
 
 // Helper to save to localStorage
 const saveState = <T,>(key: string, value: T) => {
-  localStorage.setItem(key, JSON.stringify(value));
+  if (corruptedStateKeys.delete(key)) {
+    console.warn(`Skipped saving ${key} once because the existing localStorage value could not be parsed.`);
+    return;
+  }
+
+  try {
+    localStorage.setItem(key, JSON.stringify(value));
+  } catch (e) {
+    console.error(`Error saving state ${key}`, e);
+  }
 };
 
 function ScheduleAndBudgetContent() {
@@ -191,12 +203,6 @@ function ScheduleAndBudgetContent() {
   };
 
   const handleDeleteDebt = (id: string) => {
-    const debtToRepay = debts.find(debt => debt.id === id);
-    if (debtToRepay) {
-      const newCashAmount = cashAmount - debtToRepay.amount;
-      setCashAmount(newCashAmount);
-      addCashTransaction('expense', debtToRepay.amount, `Debt cleared: ${debtToRepay.name}`, newCashAmount);
-    }
     setDebts(prevDebts => prevDebts.filter(debt => debt.id !== id));
   };
 

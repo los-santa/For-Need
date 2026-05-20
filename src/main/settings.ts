@@ -30,14 +30,17 @@ if (!fs.existsSync(settingsDir)) {
 
 // 설정 로드
 export function loadSettings(): AppSettings {
+  const settingsExists = fs.existsSync(settingsPath);
+
   try {
-    if (fs.existsSync(settingsPath)) {
+    if (settingsExists) {
       const data = fs.readFileSync(settingsPath, 'utf-8');
       const settings = JSON.parse(data);
       return { ...defaultSettings, ...settings };
     }
   } catch (error) {
     console.warn('Failed to load settings:', error);
+    return defaultSettings;
   }
 
   // 기본 설정으로 파일 생성

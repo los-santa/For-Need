@@ -5,7 +5,6 @@ import { Button } from "./ui/button";
 import { Calendar } from "./ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover";
 import { CalendarIcon, Plus, TrendingDown, TrendingUp } from "lucide-react";
-import { Switch } from "./ui/switch";
 import { useState } from "react";
 import { format } from "date-fns";
 import { useLanguage } from "../schedule-budget-contexts/LanguageContext";

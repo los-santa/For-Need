@@ -27,12 +27,29 @@ interface BalancePoint {
 }
 
 type Interval = "day" | "week" | "month" | "year";
+const MAX_RECURRING_INSTANCES = 10000;
+const getMaxPointCount = (intervalType: Interval) => {
+  switch (intervalType) {
+    case "day":
+      return 365;
+    case "week":
+      return 260;
+    case "month":
+      return 120;
+    case "year":
+      return 20;
+    default:
+      return 365;
+  }
+};
 
 export function BalanceTimeline({ currentWealth, schedules, recurringExpenses }: BalanceTimelineProps) {
   const [selectedDate, setSelectedDate] = useState<Date>();
   const [interval, setInterval] = useState<Interval>("day");
   const [pointCount, setPointCount] = useState<number>(10);
   const [startDate, setStartDate] = useState<Date>(new Date());
+  const pointLimit = getMaxPointCount(interval);
+  const effectivePointCount = Math.min(pointCount, pointLimit);
 
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat('ko-KR').format(amount);
@@ -42,12 +59,20 @@ export function BalanceTimeline({ currentWealth, schedules, recurringExpenses }:
   const getRecurringExpensesAsSchedules = (endDate: Date): Schedule[] => {
     const result: Schedule[] = [];
     const today = startOfDay(new Date());
+    let generatedCount = 0;
+    let iterationCount = 0;
 
     recurringExpenses.forEach((expense) => {
       let currentDate = startOfDay(expense.startDate);
       const finalDate = expense.endDate ? startOfDay(expense.endDate) : endDate;
       
-      while (currentDate <= finalDate && currentDate <= endDate) {
+      while (
+        currentDate <= finalDate &&
+        currentDate <= endDate &&
+        generatedCount < MAX_RECURRING_INSTANCES &&
+        iterationCount < MAX_RECURRING_INSTANCES
+      ) {
+        iterationCount += 1;
         if (currentDate >= today) {
           result.push({
             id: `recurring-${expense.id}-${currentDate.getTime()}`,
@@ -56,6 +81,7 @@ export function BalanceTimeline({ currentWealth, schedules, recurringExpenses }:
             requiredAmount: expense.amount,
             isIncome: expense.isIncome,
           });
+          generatedCount += 1;
         }
 
         // Calculate next date
@@ -98,7 +124,7 @@ export function BalanceTimeline({ currentWealth, schedules, recurringExpenses }:
 
   // Calculate balance changes
   const balancePoints = useMemo(() => {
-    const endDate = getEndDate(interval, pointCount);
+    const endDate = getEndDate(interval, effectivePointCount);
     const allSchedules = [...schedules, ...getRecurringExpensesAsSchedules(endDate)];
 
     if (allSchedules.length === 0) return [];
@@ -150,7 +176,7 @@ export function BalanceTimeline({ currentWealth, schedules, recurringExpenses }:
       });
 
     return points;
-  }, [currentWealth, schedules, recurringExpenses, interval, pointCount]);
+  }, [currentWealth, schedules, recurringExpenses, interval, effectivePointCount]);
 
   // Chart data - sampling based on interval
   const chartData = useMemo(() => {
@@ -169,7 +195,7 @@ export function BalanceTimeline({ currentWealth, schedules, recurringExpenses }:
     const sampledPoints: any[] = [];
     
     // From past to future (past pointCount + today + future pointCount)
-    for (let i = -pointCount; i <= pointCount; i++) {
+    for (let i = -effectivePointCount; i <= effectivePointCount; i++) {
       let targetDate: Date;
       
       switch (interval) {
@@ -209,7 +235,7 @@ export function BalanceTimeline({ currentWealth, schedules, recurringExpenses }:
     }
 
     return sampledPoints;
-  }, [balancePoints, interval, pointCount, currentWealth, startDate]);
+  }, [balancePoints, interval, effectivePointCount, currentWealth, startDate]);
 
   // Calculate Y-axis range
   const yAxisDomain = useMemo(() => {
@@ -234,7 +260,7 @@ export function BalanceTimeline({ currentWealth, schedules, recurringExpenses }:
     if (!date) return null;
 
     const targetDate = startOfDay(date);
-    const endDate = getEndDate(interval, pointCount);
+    const endDate = getEndDate(interval, effectivePointCount);
     const allSchedules = [...schedules, ...getRecurringExpensesAsSchedules(endDate)];
     
     // Balance at 00:00 on that date (before expenses on that day)
@@ -296,12 +322,16 @@ export function BalanceTimeline({ currentWealth, schedules, recurringExpenses }:
             <Input
               type="number"
               min="1"
-              max="1000"
-              value={pointCount}
-              onChange={(e) => setPointCount(Math.max(1, parseInt(e.target.value) || 1))}
+              max={pointLimit}
+              value={effectivePointCount}
+              onChange={(e) => setPointCount(Math.min(pointLimit, Math.max(1, parseInt(e.target.value) || 1)))}
               className="w-24 bg-[#2A2A2A] border-white/30 text-white"
             />
-            <Tabs value={interval} onValueChange={(value) => setInterval(value as Interval)} className="flex-1">
+            <Tabs value={interval} onValueChange={(value) => {
+              const nextInterval = value as Interval;
+              setInterval(nextInterval);
+              setPointCount((prev) => Math.min(prev, getMaxPointCount(nextInterval)));
+            }} className="flex-1">
               <TabsList className="grid w-full grid-cols-4 bg-[#2A2A2A]">
                 <TabsTrigger value="day" className="data-[state=active]:bg-white data-[state=active]:text-black text-white">Day</TabsTrigger>
                 <TabsTrigger value="week" className="data-[state=active]:bg-white data-[state=active]:text-black text-white">Week</TabsTrigger>
