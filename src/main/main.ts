@@ -2148,8 +2148,19 @@ ipcMain.handle('create-new-database-path', async () => {
 });
 
 // DB 경로 변경 및 앱 재시작
-ipcMain.handle('change-database-path', async (event, newPath: string) => {
+ipcMain.handle('change-database-path', async (event, newPath: string, options?: { allowCreate?: boolean }) => {
   try {
+    const allowCreate = options?.allowCreate === true;
+    const targetExists = fs.existsSync(newPath);
+
+    if (!allowCreate && !targetExists) {
+      return { success: false, error: 'Database file does not exist' };
+    }
+
+    if (targetExists && fs.statSync(newPath).isDirectory()) {
+      return { success: false, error: 'Database path is a directory' };
+    }
+
     const success = setDatabasePath(newPath);
     if (success) {
       // DB 경로 변경 후 앱 재시작이 필요함을 알림
