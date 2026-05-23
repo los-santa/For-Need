@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useEffect, useCallback } from "react";
 import { WealthDisplay } from "./schedule-budget-components/WealthDisplay";
 import { TotalAssetsDisplay } from "./schedule-budget-components/TotalAssetsDisplay";
 import { WealthAssetModal, Item, Debt, Loan } from "./schedule-budget-components/WealthAssetModal";
@@ -15,6 +15,14 @@ import { Button } from "./schedule-budget-components/ui/button";
 import { Separator } from "./schedule-budget-components/ui/separator";
 import { Wallet } from "lucide-react";
 import { LanguageProvider, useLanguage } from "./schedule-budget-contexts/LanguageContext";
+
+const SCHEDULE_BUDGET_STORAGE_NAMESPACE = 'forneed:schedule-budget';
+const LEGACY_STORAGE_MIGRATION_KEY = `${SCHEDULE_BUDGET_STORAGE_NAMESPACE}:legacy-migrated`;
+
+const getDbStorageId = (dbPath: string) => encodeURIComponent(dbPath || 'default');
+
+const getScopedStateKey = (storageId: string, key: string) =>
+  `${SCHEDULE_BUDGET_STORAGE_NAMESPACE}:${storageId}:${key}`;
 
 // Helper to load from localStorage
 const loadState = <T,>(key: string, defaultValue: T): T => {
@@ -52,34 +60,102 @@ const saveState = <T,>(key: string, value: T) => {
   localStorage.setItem(key, JSON.stringify(value));
 };
 
+const loadScopedState = <T,>(
+  storageId: string,
+  key: string,
+  defaultValue: T,
+  migrateLegacyState: boolean,
+): T => {
+  const scopedKey = getScopedStateKey(storageId, key);
+  const scopedValue = localStorage.getItem(scopedKey);
+
+  if (scopedValue !== null) {
+    return loadState(scopedKey, defaultValue);
+  }
+
+  const legacyValue = localStorage.getItem(key);
+  if (migrateLegacyState && legacyValue !== null) {
+    localStorage.setItem(scopedKey, legacyValue);
+    return loadState(scopedKey, defaultValue);
+  }
+
+  return defaultValue;
+};
+
 function ScheduleAndBudgetContent() {
   const { t } = useLanguage();
+  const [storageId, setStorageId] = useState<string | null>(null);
+  const [storageReady, setStorageReady] = useState(false);
 
-  // Initialize states from localStorage
-  const [cashAmount, setCashAmount] = useState<number>(() => loadState('cashAmount', 0));
-  const [items, setItems] = useState<Item[]>(() => loadState('items', []));
-  const [debts, setDebts] = useState<Debt[]>(() => loadState('debts', []));
-  const [loans, setLoans] = useState<Loan[]>(() => loadState('loans', []));
-  const [cashTransactions, setCashTransactions] = useState<CashTransaction[]>(() => loadState('cashTransactions', []));
-  const [budgets, setBudgets] = useState<Budget[]>(() => loadState('budgets', []));
-  const [expenses, setExpenses] = useState<Expense[]>(() => loadState('expenses', []));
-  const [schedules, setSchedules] = useState<Schedule[]>(() => loadState('schedules', []));
-  const [recurringExpenses, setRecurringExpenses] = useState<RecurringExpense[]>(() => loadState('recurringExpenses', []));
+  // Initialize states after the current DB path is known.
+  const [cashAmount, setCashAmount] = useState<number>(0);
+  const [items, setItems] = useState<Item[]>([]);
+  const [debts, setDebts] = useState<Debt[]>([]);
+  const [loans, setLoans] = useState<Loan[]>([]);
+  const [cashTransactions, setCashTransactions] = useState<CashTransaction[]>([]);
+  const [budgets, setBudgets] = useState<Budget[]>([]);
+  const [expenses, setExpenses] = useState<Expense[]>([]);
+  const [schedules, setSchedules] = useState<Schedule[]>([]);
+  const [recurringExpenses, setRecurringExpenses] = useState<RecurringExpense[]>([]);
 
   const [isAssetModalOpen, setIsAssetModalOpen] = useState(false);
   const [isBudgetModalOpen, setIsBudgetModalOpen] = useState(false);
   const [isHistoryModalOpen, setIsHistoryModalOpen] = useState(false);
 
-  // Sync states to localStorage
-  useEffect(() => { saveState('cashAmount', cashAmount); }, [cashAmount]);
-  useEffect(() => { saveState('items', items); }, [items]);
-  useEffect(() => { saveState('debts', debts); }, [debts]);
-  useEffect(() => { saveState('loans', loans); }, [loans]);
-  useEffect(() => { saveState('cashTransactions', cashTransactions); }, [cashTransactions]);
-  useEffect(() => { saveState('budgets', budgets); }, [budgets]);
-  useEffect(() => { saveState('expenses', expenses); }, [expenses]);
-  useEffect(() => { saveState('schedules', schedules); }, [schedules]);
-  useEffect(() => { saveState('recurringExpenses', recurringExpenses); }, [recurringExpenses]);
+  useEffect(() => {
+    let cancelled = false;
+
+    const initializeStorage = async () => {
+      let dbPath = 'default';
+      try {
+        const result = await window.electron.ipcRenderer.invoke('get-settings');
+        if (result.success && result.data?.dbPath) {
+          dbPath = result.data.dbPath;
+        }
+      } catch (error) {
+        console.error('Failed to load DB-scoped schedule storage:', error);
+      }
+
+      if (cancelled) return;
+
+      const nextStorageId = getDbStorageId(dbPath);
+      const migrateLegacyState = localStorage.getItem(LEGACY_STORAGE_MIGRATION_KEY) !== 'true';
+      setCashAmount(loadScopedState(nextStorageId, 'cashAmount', 0, migrateLegacyState));
+      setItems(loadScopedState<Item[]>(nextStorageId, 'items', [], migrateLegacyState));
+      setDebts(loadScopedState<Debt[]>(nextStorageId, 'debts', [], migrateLegacyState));
+      setLoans(loadScopedState<Loan[]>(nextStorageId, 'loans', [], migrateLegacyState));
+      setCashTransactions(loadScopedState<CashTransaction[]>(nextStorageId, 'cashTransactions', [], migrateLegacyState));
+      setBudgets(loadScopedState<Budget[]>(nextStorageId, 'budgets', [], migrateLegacyState));
+      setExpenses(loadScopedState<Expense[]>(nextStorageId, 'expenses', [], migrateLegacyState));
+      setSchedules(loadScopedState<Schedule[]>(nextStorageId, 'schedules', [], migrateLegacyState));
+      setRecurringExpenses(loadScopedState<RecurringExpense[]>(nextStorageId, 'recurringExpenses', [], migrateLegacyState));
+      localStorage.setItem(LEGACY_STORAGE_MIGRATION_KEY, 'true');
+      setStorageId(nextStorageId);
+      setStorageReady(true);
+    };
+
+    initializeStorage();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const saveScopedState = useCallback(<T,>(key: string, value: T) => {
+    if (!storageReady || !storageId) return;
+    saveState(getScopedStateKey(storageId, key), value);
+  }, [storageId, storageReady]);
+
+  // Sync states to DB-scoped localStorage keys.
+  useEffect(() => { saveScopedState('cashAmount', cashAmount); }, [cashAmount, saveScopedState]);
+  useEffect(() => { saveScopedState('items', items); }, [items, saveScopedState]);
+  useEffect(() => { saveScopedState('debts', debts); }, [debts, saveScopedState]);
+  useEffect(() => { saveScopedState('loans', loans); }, [loans, saveScopedState]);
+  useEffect(() => { saveScopedState('cashTransactions', cashTransactions); }, [cashTransactions, saveScopedState]);
+  useEffect(() => { saveScopedState('budgets', budgets); }, [budgets, saveScopedState]);
+  useEffect(() => { saveScopedState('expenses', expenses); }, [expenses, saveScopedState]);
+  useEffect(() => { saveScopedState('schedules', schedules); }, [schedules, saveScopedState]);
+  useEffect(() => { saveScopedState('recurringExpenses', recurringExpenses); }, [recurringExpenses, saveScopedState]);
 
   // Calculate current wealth (Cash + Loans - Debts)
   const currentWealth = useMemo(() => {
@@ -269,6 +345,14 @@ function ScheduleAndBudgetContent() {
     }
     setDebts(prevDebts => prevDebts.filter(debt => debt.id !== id));
   };
+
+  if (!storageReady) {
+    return (
+      <div style={{ minHeight: '100vh', backgroundColor: '#000000', color: '#ffffff', padding: '24px' }}>
+        일정/예산 데이터를 불러오는 중...
+      </div>
+    );
+  }
 
   return (
     <div style={{ minHeight: '100vh', backgroundColor: '#000000', padding: '24px', overflowY: 'auto' }}>
