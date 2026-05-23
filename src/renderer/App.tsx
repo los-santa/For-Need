@@ -602,6 +602,12 @@ function DatabaseSettings() {
     }
   };
 
+  const restartAfterDatabasePathChange = async (restartMessage: string) => {
+    setMessage(restartMessage);
+    window.alert('DB 경로가 변경되었습니다. 데이터가 다른 DB에 저장되지 않도록 지금 앱을 재시작합니다.');
+    await window.electron.ipcRenderer.invoke('restart-app');
+  };
+
   const handleSelectDatabasePath = async () => {
     try {
       setLoading(true);
@@ -614,13 +620,8 @@ function DatabaseSettings() {
           setMessage(changeResult.message);
           setDbSettings((prev: any) => ({ ...prev, dbPath: result.path }));
 
-          // 재시작 확인 다이얼로그
           if (changeResult.requiresRestart) {
-            setTimeout(() => {
-              if (window.confirm('변경사항을 적용하려면 앱을 재시작해야 합니다. 지금 재시작하시겠습니까?')) {
-                window.electron.ipcRenderer.invoke('restart-app');
-              }
-            }, 1000);
+            await restartAfterDatabasePathChange(changeResult.message);
           }
         } else {
           setMessage('DB 경로 변경에 실패했습니다: ' + changeResult.error);
@@ -643,15 +644,12 @@ function DatabaseSettings() {
       const result = await window.electron.ipcRenderer.invoke('change-database-path', dbPath);
 
       if (result.success) {
-        setMessage('DB 경로가 변경되었습니다. 앱을 재시작해주세요.');
-        loadDbSettings();
-        loadRecentDbPaths();
-
         if (result.requiresRestart) {
-          const shouldRestart = window.confirm('변경사항을 적용하려면 앱을 재시작해야 합니다. 지금 재시작하시겠습니까?');
-          if (shouldRestart) {
-            await window.electron.ipcRenderer.invoke('restart-app');
-          }
+          await restartAfterDatabasePathChange('DB 경로가 변경되었습니다. 앱을 재시작합니다.');
+        } else {
+          setMessage('DB 경로가 변경되었습니다.');
+          loadDbSettings();
+          loadRecentDbPaths();
         }
       } else {
         setMessage(`DB 경로 변경 실패: ${result.error}`);
@@ -686,16 +684,13 @@ function DatabaseSettings() {
         const changeResult = await window.electron.ipcRenderer.invoke('change-database-path', result.path);
 
         if (changeResult.success) {
-          setMessage('새 DB 파일이 생성되었습니다. 앱을 재시작해주세요.');
-          loadDbSettings();
-          loadRecentDbPaths();
-          loadLocalDatabases();
-
           if (changeResult.requiresRestart) {
-            const shouldRestart = window.confirm('변경사항을 적용하려면 앱을 재시작해야 합니다. 지금 재시작하시겠습니까?');
-            if (shouldRestart) {
-              await window.electron.ipcRenderer.invoke('restart-app');
-            }
+            await restartAfterDatabasePathChange('새 DB 파일이 생성되었습니다. 앱을 재시작합니다.');
+          } else {
+            setMessage('새 DB 파일이 생성되었습니다.');
+            loadDbSettings();
+            loadRecentDbPaths();
+            loadLocalDatabases();
           }
         } else {
           setMessage(`새 DB 생성 실패: ${changeResult.error}`);
@@ -718,15 +713,12 @@ function DatabaseSettings() {
       const result = await window.electron.ipcRenderer.invoke('change-database-path', dbPath);
 
       if (result.success) {
-        setMessage('DB가 변경되었습니다. 앱을 재시작해주세요.');
-        loadDbSettings();
-        loadRecentDbPaths();
-
         if (result.requiresRestart) {
-          const shouldRestart = window.confirm('변경사항을 적용하려면 앱을 재시작해야 합니다. 지금 재시작하시겠습니까?');
-          if (shouldRestart) {
-            await window.electron.ipcRenderer.invoke('restart-app');
-          }
+          await restartAfterDatabasePathChange('DB가 변경되었습니다. 앱을 재시작합니다.');
+        } else {
+          setMessage('DB가 변경되었습니다.');
+          loadDbSettings();
+          loadRecentDbPaths();
         }
       } else {
         setMessage(`DB 변경 실패: ${result.error}`);
