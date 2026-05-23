@@ -2053,10 +2053,10 @@ ipcMain.handle('get-project-cards', async (event, projectId: string) => {
       SELECT
         c.*,
         ct.cardtype_name,
-        COUNT(r.id) as relation_count
+        COUNT(r.relation_id) as relation_count
       FROM CARDS c
       LEFT JOIN CARDTYPES ct ON c.cardtype = ct.cardtype_id
-      LEFT JOIN RELATIONS r ON (c.id = r.source_card OR c.id = r.target_card) AND r.deleted_at IS NULL
+      LEFT JOIN RELATION r ON (c.id = r.source OR c.id = r.target) AND r.deleted_at IS NULL
       WHERE c.project_id = ? AND c.deleted_at IS NULL
       GROUP BY c.id
       ORDER BY c.createdat DESC
@@ -2078,6 +2078,19 @@ import { loadSettings, saveSettings, setDatabasePath, getDatabasePath, getRecent
 import { shell } from 'electron';
 import path from 'path';
 import fs from 'fs';
+
+function getLocalDatabaseDir(): string {
+  return path.join(app.getPath('userData'), 'local-databases');
+}
+
+function isPathInsideDirectory(parentDir: string, childPath: string): boolean {
+  const relativePath = path.relative(parentDir, childPath);
+  return relativePath.length > 0 && !relativePath.startsWith('..') && !path.isAbsolute(relativePath);
+}
+
+function getRealPathIfExists(filePath: string): string {
+  return fs.existsSync(filePath) ? fs.realpathSync(filePath) : path.resolve(filePath);
+}
 
 // 현재 설정 가져오기
 ipcMain.handle('get-settings', async () => {
@@ -2201,7 +2214,7 @@ ipcMain.handle('remove-recent-db-path', async (event, dbPath: string) => {
 // 로컬 DB 목록 가져오기
 ipcMain.handle('get-local-databases', async () => {
   try {
-    const localDbDir = path.join(app.getPath('userData'), 'local-databases');
+    const localDbDir = getLocalDatabaseDir();
 
     if (!fs.existsSync(localDbDir)) {
       fs.mkdirSync(localDbDir, { recursive: true });
@@ -2236,12 +2249,42 @@ ipcMain.handle('get-local-databases', async () => {
 // 로컬 DB 삭제
 ipcMain.handle('delete-local-database', async (event, dbPath: string) => {
   try {
-    if (fs.existsSync(dbPath)) {
-      fs.unlinkSync(dbPath);
-      return { success: true };
-    } else {
+    const localDbDir = getLocalDatabaseDir();
+    if (!fs.existsSync(localDbDir)) {
+      fs.mkdirSync(localDbDir, { recursive: true });
+    }
+
+    const resolvedLocalDbDir = path.resolve(localDbDir);
+    const resolvedDbPath = path.resolve(dbPath);
+
+    if (path.extname(resolvedDbPath).toLowerCase() !== '.db') {
+      return { success: false, error: 'Only local .db files can be deleted' };
+    }
+
+    if (!isPathInsideDirectory(resolvedLocalDbDir, resolvedDbPath)) {
+      return { success: false, error: 'Database path is outside local database directory' };
+    }
+
+    if (!fs.existsSync(resolvedDbPath)) {
       return { success: false, error: 'File not found' };
     }
+
+    const realLocalDbDir = fs.realpathSync(localDbDir);
+    const realDbPath = fs.realpathSync(resolvedDbPath);
+
+    if (!isPathInsideDirectory(realLocalDbDir, realDbPath)) {
+      return { success: false, error: 'Database path is outside local database directory' };
+    }
+
+    const currentDbPath = path.resolve(getDatabasePath());
+    const currentRealDbPath = getRealPathIfExists(currentDbPath);
+
+    if (resolvedDbPath === currentDbPath || realDbPath === currentRealDbPath) {
+      return { success: false, error: 'Cannot delete the active database' };
+    }
+
+    fs.unlinkSync(resolvedDbPath);
+    return { success: true };
   } catch (error) {
     log.error('Failed to delete local database:', error);
     return { success: false, error: 'Failed to delete local database' };
