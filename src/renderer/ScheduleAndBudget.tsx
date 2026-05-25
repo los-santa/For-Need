@@ -191,12 +191,6 @@ function ScheduleAndBudgetContent() {
   };
 
   const handleDeleteDebt = (id: string) => {
-    const debtToRepay = debts.find(debt => debt.id === id);
-    if (debtToRepay) {
-      const newCashAmount = cashAmount - debtToRepay.amount;
-      setCashAmount(newCashAmount);
-      addCashTransaction('expense', debtToRepay.amount, `Debt cleared: ${debtToRepay.name}`, newCashAmount);
-    }
     setDebts(prevDebts => prevDebts.filter(debt => debt.id !== id));
   };
 

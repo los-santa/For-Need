@@ -2233,15 +2233,44 @@ ipcMain.handle('get-local-databases', async () => {
   }
 });
 
+const getResolvedLocalDbDir = () => path.resolve(app.getPath('userData'), 'local-databases');
+
+const isPathInsideDirectory = (candidatePath: string, directoryPath: string) => {
+  const resolvedCandidate = path.resolve(candidatePath);
+  const resolvedDirectory = path.resolve(directoryPath);
+  return resolvedCandidate.startsWith(`${resolvedDirectory}${path.sep}`);
+};
+
+const isCurrentDatabasePath = (candidatePath: string) => {
+  const resolvedCandidate = path.resolve(candidatePath);
+  const configuredPath = path.resolve(getDatabasePath());
+  const openDatabasePath = typeof (db as any).name === 'string'
+    ? path.resolve((db as any).name)
+    : configuredPath;
+
+  return resolvedCandidate === configuredPath || resolvedCandidate === openDatabasePath;
+};
+
 // 로컬 DB 삭제
 ipcMain.handle('delete-local-database', async (event, dbPath: string) => {
   try {
-    if (fs.existsSync(dbPath)) {
-      fs.unlinkSync(dbPath);
-      return { success: true };
-    } else {
-      return { success: false, error: 'File not found' };
+    const localDbDir = getResolvedLocalDbDir();
+    const resolvedDbPath = path.resolve(dbPath);
+
+    if (!isPathInsideDirectory(resolvedDbPath, localDbDir)) {
+      return { success: false, error: '로컬 데이터베이스 폴더의 파일만 삭제할 수 있습니다.' };
     }
+
+    if (isCurrentDatabasePath(resolvedDbPath)) {
+      return { success: false, error: '현재 사용 중인 데이터베이스는 삭제할 수 없습니다. 다른 DB로 전환하고 앱을 재시작한 뒤 삭제해주세요.' };
+    }
+
+    if (fs.existsSync(resolvedDbPath)) {
+      fs.unlinkSync(resolvedDbPath);
+      return { success: true };
+    }
+
+    return { success: false, error: 'File not found' };
   } catch (error) {
     log.error('Failed to delete local database:', error);
     return { success: false, error: 'Failed to delete local database' };
