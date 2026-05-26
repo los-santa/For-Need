@@ -30,17 +30,19 @@ if (!fs.existsSync(settingsDir)) {
 
 // 설정 로드
 export function loadSettings(): AppSettings {
-  try {
-    if (fs.existsSync(settingsPath)) {
+  if (fs.existsSync(settingsPath)) {
+    try {
       const data = fs.readFileSync(settingsPath, 'utf-8');
       const settings = JSON.parse(data);
       return { ...defaultSettings, ...settings };
+    } catch (error) {
+      console.warn('Failed to load settings:', error);
+      return defaultSettings;
     }
-  } catch (error) {
-    console.warn('Failed to load settings:', error);
   }
 
-  // 기본 설정으로 파일 생성
+  // 설정 파일이 없을 때만 기본 설정 파일을 생성한다. 손상된 파일을 기본값으로
+  // 덮어쓰면 사용자의 커스텀 DB 경로를 영구적으로 잃을 수 있다.
   saveSettings(defaultSettings);
   return defaultSettings;
 }
