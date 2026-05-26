@@ -212,6 +212,12 @@ function ScheduleAndBudgetContent() {
   };
 
   const handleDeleteLoan = (id: string) => {
+    const loanToDelete = loans.find(loan => loan.id === id);
+    if (loanToDelete) {
+      const newCashAmount = cashAmount + loanToDelete.amount;
+      setCashAmount(newCashAmount);
+      addCashTransaction('income', loanToDelete.amount, `Loan deleted: ${loanToDelete.name}`, newCashAmount);
+    }
     setLoans(loans.filter(loan => loan.id !== id));
   };
 
