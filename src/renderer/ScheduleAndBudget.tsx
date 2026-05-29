@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo } from "react";
 import { WealthDisplay } from "./schedule-budget-components/WealthDisplay";
 import { TotalAssetsDisplay } from "./schedule-budget-components/TotalAssetsDisplay";
 import { WealthAssetModal, Item, Debt, Loan } from "./schedule-budget-components/WealthAssetModal";
@@ -15,71 +15,25 @@ import { Button } from "./schedule-budget-components/ui/button";
 import { Separator } from "./schedule-budget-components/ui/separator";
 import { Wallet } from "lucide-react";
 import { LanguageProvider, useLanguage } from "./schedule-budget-contexts/LanguageContext";
-
-// Helper to load from localStorage
-const loadState = <T,>(key: string, defaultValue: T): T => {
-  const saved = localStorage.getItem(key);
-  if (!saved) return defaultValue;
-  try {
-    const parsed = JSON.parse(saved);
-    // Recursively convert date strings back to Date objects
-    const reviveDates = (obj: any): any => {
-      if (obj === null || obj === undefined) return obj;
-      if (typeof obj === 'string' && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}.\d{3}Z$/.test(obj)) {
-        return new Date(obj);
-      }
-      if (Array.isArray(obj)) {
-        return obj.map(reviveDates);
-      }
-      if (typeof obj === 'object') {
-        const newObj: any = {};
-        for (const key in obj) {
-          newObj[key] = reviveDates(obj[key]);
-        }
-        return newObj;
-      }
-      return obj;
-    };
-    return reviveDates(parsed);
-  } catch (e) {
-    console.error(`Error loading state ${key}`, e);
-    return defaultValue;
-  }
-};
-
-// Helper to save to localStorage
-const saveState = <T,>(key: string, value: T) => {
-  localStorage.setItem(key, JSON.stringify(value));
-};
+import { usePersistentState } from "./scheduleBudgetStorage";
 
 function ScheduleAndBudgetContent() {
   const { t } = useLanguage();
 
   // Initialize states from localStorage
-  const [cashAmount, setCashAmount] = useState<number>(() => loadState('cashAmount', 0));
-  const [items, setItems] = useState<Item[]>(() => loadState('items', []));
-  const [debts, setDebts] = useState<Debt[]>(() => loadState('debts', []));
-  const [loans, setLoans] = useState<Loan[]>(() => loadState('loans', []));
-  const [cashTransactions, setCashTransactions] = useState<CashTransaction[]>(() => loadState('cashTransactions', []));
-  const [budgets, setBudgets] = useState<Budget[]>(() => loadState('budgets', []));
-  const [expenses, setExpenses] = useState<Expense[]>(() => loadState('expenses', []));
-  const [schedules, setSchedules] = useState<Schedule[]>(() => loadState('schedules', []));
-  const [recurringExpenses, setRecurringExpenses] = useState<RecurringExpense[]>(() => loadState('recurringExpenses', []));
+  const [cashAmount, setCashAmount] = usePersistentState<number>('cashAmount', 0);
+  const [items, setItems] = usePersistentState<Item[]>('items', []);
+  const [debts, setDebts] = usePersistentState<Debt[]>('debts', []);
+  const [loans, setLoans] = usePersistentState<Loan[]>('loans', []);
+  const [cashTransactions, setCashTransactions] = usePersistentState<CashTransaction[]>('cashTransactions', []);
+  const [budgets, setBudgets] = usePersistentState<Budget[]>('budgets', []);
+  const [expenses, setExpenses] = usePersistentState<Expense[]>('expenses', []);
+  const [schedules, setSchedules] = usePersistentState<Schedule[]>('schedules', []);
+  const [recurringExpenses, setRecurringExpenses] = usePersistentState<RecurringExpense[]>('recurringExpenses', []);
 
   const [isAssetModalOpen, setIsAssetModalOpen] = useState(false);
   const [isBudgetModalOpen, setIsBudgetModalOpen] = useState(false);
   const [isHistoryModalOpen, setIsHistoryModalOpen] = useState(false);
-
-  // Sync states to localStorage
-  useEffect(() => { saveState('cashAmount', cashAmount); }, [cashAmount]);
-  useEffect(() => { saveState('items', items); }, [items]);
-  useEffect(() => { saveState('debts', debts); }, [debts]);
-  useEffect(() => { saveState('loans', loans); }, [loans]);
-  useEffect(() => { saveState('cashTransactions', cashTransactions); }, [cashTransactions]);
-  useEffect(() => { saveState('budgets', budgets); }, [budgets]);
-  useEffect(() => { saveState('expenses', expenses); }, [expenses]);
-  useEffect(() => { saveState('schedules', schedules); }, [schedules]);
-  useEffect(() => { saveState('recurringExpenses', recurringExpenses); }, [recurringExpenses]);
 
   // Calculate current wealth (Cash + Loans - Debts)
   const currentWealth = useMemo(() => {
