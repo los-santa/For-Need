@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useCallback, useRef } from "react";
 import { WealthDisplay } from "./schedule-budget-components/WealthDisplay";
 import { TotalAssetsDisplay } from "./schedule-budget-components/TotalAssetsDisplay";
 import { WealthAssetModal, Item, Debt, Loan } from "./schedule-budget-components/WealthAssetModal";
@@ -15,71 +15,81 @@ import { Button } from "./schedule-budget-components/ui/button";
 import { Separator } from "./schedule-budget-components/ui/separator";
 import { Wallet } from "lucide-react";
 import { LanguageProvider, useLanguage } from "./schedule-budget-contexts/LanguageContext";
+import {
+  loadState,
+  normalizeBudgets,
+  normalizeCashAmount,
+  normalizeCashTransactions,
+  normalizeDebts,
+  normalizeExpenses,
+  normalizeItems,
+  normalizeLoans,
+  normalizeRecurringExpenses,
+  normalizeSchedules,
+  saveState,
+} from "./scheduleBudgetStorage";
 
-// Helper to load from localStorage
-const loadState = <T,>(key: string, defaultValue: T): T => {
-  const saved = localStorage.getItem(key);
-  if (!saved) return defaultValue;
-  try {
-    const parsed = JSON.parse(saved);
-    // Recursively convert date strings back to Date objects
-    const reviveDates = (obj: any): any => {
-      if (obj === null || obj === undefined) return obj;
-      if (typeof obj === 'string' && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}.\d{3}Z$/.test(obj)) {
-        return new Date(obj);
-      }
-      if (Array.isArray(obj)) {
-        return obj.map(reviveDates);
-      }
-      if (typeof obj === 'object') {
-        const newObj: any = {};
-        for (const key in obj) {
-          newObj[key] = reviveDates(obj[key]);
-        }
-        return newObj;
-      }
-      return obj;
-    };
-    return reviveDates(parsed);
-  } catch (e) {
-    console.error(`Error loading state ${key}`, e);
-    return defaultValue;
+type PersistentStateSetter<T> = (value: T | ((previous: T) => T)) => T;
+
+const createId = () => {
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+    return crypto.randomUUID();
   }
+
+  return `${Date.now()}-${Math.random().toString(36).slice(2)}`;
 };
 
-// Helper to save to localStorage
-const saveState = <T,>(key: string, value: T) => {
-  localStorage.setItem(key, JSON.stringify(value));
+const usePersistentState = <T,>(
+  key: string,
+  defaultValue: T,
+  normalize: (value: unknown) => T | null,
+): [T, PersistentStateSetter<T>] => {
+  const [state, setState] = useState<T>(() => loadState(key, defaultValue, normalize));
+  const stateRef = useRef(state);
+
+  const setPersistentState = useCallback<PersistentStateSetter<T>>(
+    (value) => {
+      const nextValue =
+        typeof value === "function"
+          ? (value as (previous: T) => T)(stateRef.current)
+          : value;
+
+      stateRef.current = nextValue;
+      setState(nextValue);
+      saveState(key, nextValue);
+      return nextValue;
+    },
+    [key],
+  );
+
+  return [state, setPersistentState];
 };
 
 function ScheduleAndBudgetContent() {
   const { t } = useLanguage();
 
   // Initialize states from localStorage
-  const [cashAmount, setCashAmount] = useState<number>(() => loadState('cashAmount', 0));
-  const [items, setItems] = useState<Item[]>(() => loadState('items', []));
-  const [debts, setDebts] = useState<Debt[]>(() => loadState('debts', []));
-  const [loans, setLoans] = useState<Loan[]>(() => loadState('loans', []));
-  const [cashTransactions, setCashTransactions] = useState<CashTransaction[]>(() => loadState('cashTransactions', []));
-  const [budgets, setBudgets] = useState<Budget[]>(() => loadState('budgets', []));
-  const [expenses, setExpenses] = useState<Expense[]>(() => loadState('expenses', []));
-  const [schedules, setSchedules] = useState<Schedule[]>(() => loadState('schedules', []));
-  const [recurringExpenses, setRecurringExpenses] = useState<RecurringExpense[]>(() => loadState('recurringExpenses', []));
+  const [cashAmount, setCashAmount] = usePersistentState<number>('cashAmount', 0, normalizeCashAmount);
+  const [items, setItems] = usePersistentState<Item[]>('items', [], normalizeItems);
+  const [debts, setDebts] = usePersistentState<Debt[]>('debts', [], normalizeDebts);
+  const [loans, setLoans] = usePersistentState<Loan[]>('loans', [], normalizeLoans);
+  const [cashTransactions, setCashTransactions] = usePersistentState<CashTransaction[]>(
+    'cashTransactions',
+    [],
+    normalizeCashTransactions,
+  );
+  const [budgets, setBudgets] = usePersistentState<Budget[]>('budgets', [], normalizeBudgets);
+  const [expenses, setExpenses] = usePersistentState<Expense[]>('expenses', [], normalizeExpenses);
+  const [schedules, setSchedules] = usePersistentState<Schedule[]>('schedules', [], normalizeSchedules);
+  const [recurringExpenses, setRecurringExpenses] = usePersistentState<RecurringExpense[]>(
+    'recurringExpenses',
+    [],
+    normalizeRecurringExpenses,
+  );
 
   const [isAssetModalOpen, setIsAssetModalOpen] = useState(false);
   const [isBudgetModalOpen, setIsBudgetModalOpen] = useState(false);
   const [isHistoryModalOpen, setIsHistoryModalOpen] = useState(false);
-
-  // Sync states to localStorage
-  useEffect(() => { saveState('cashAmount', cashAmount); }, [cashAmount]);
-  useEffect(() => { saveState('items', items); }, [items]);
-  useEffect(() => { saveState('debts', debts); }, [debts]);
-  useEffect(() => { saveState('loans', loans); }, [loans]);
-  useEffect(() => { saveState('cashTransactions', cashTransactions); }, [cashTransactions]);
-  useEffect(() => { saveState('budgets', budgets); }, [budgets]);
-  useEffect(() => { saveState('expenses', expenses); }, [expenses]);
-  useEffect(() => { saveState('schedules', schedules); }, [schedules]);
-  useEffect(() => { saveState('recurringExpenses', recurringExpenses); }, [recurringExpenses]);
 
   // Calculate current wealth (Cash + Loans - Debts)
   const currentWealth = useMemo(() => {
@@ -98,7 +108,7 @@ function ScheduleAndBudgetContent() {
   // Helper function to add cash transaction
   const addCashTransaction = (type: 'income' | 'expense', amount: number, description: string, newBalance: number) => {
     const transaction: CashTransaction = {
-      id: Date.now().toString(),
+      id: createId(),
       date: new Date(),
       type,
       amount,
@@ -111,13 +121,13 @@ function ScheduleAndBudgetContent() {
   const handleAddSchedule = (newSchedule: Omit<Schedule, 'id'>) => {
     const schedule: Schedule = {
       ...newSchedule,
-      id: Date.now().toString(),
+      id: createId(),
     };
-    setSchedules([...schedules, schedule]);
+    setSchedules(prevSchedules => [...prevSchedules, schedule]);
   };
 
   const handleDeleteSchedule = (id: string) => {
-    setSchedules(schedules.filter(schedule => schedule.id !== id));
+    setSchedules(prevSchedules => prevSchedules.filter(schedule => schedule.id !== id));
   };
 
   const handleExecuteSale = (scheduleId: string) => {
@@ -131,19 +141,19 @@ function ScheduleAndBudgetContent() {
     }
 
     handleSellItem(item.id, item.name, saleSchedule.requiredAmount);
-    setSchedules(schedules.filter(s => s.id !== scheduleId));
+    setSchedules(prevSchedules => prevSchedules.filter(s => s.id !== scheduleId));
   };
 
   const handleAddRecurringExpense = (newExpense: Omit<RecurringExpense, 'id'>) => {
     const expense: RecurringExpense = {
       ...newExpense,
-      id: Date.now().toString(),
+      id: createId(),
     };
-    setRecurringExpenses([...recurringExpenses, expense]);
+    setRecurringExpenses(prevExpenses => [...prevExpenses, expense]);
   };
 
   const handleDeleteRecurringExpense = (id: string) => {
-    setRecurringExpenses(recurringExpenses.filter(expense => expense.id !== id));
+    setRecurringExpenses(prevExpenses => prevExpenses.filter(expense => expense.id !== id));
   };
 
   const handleUpdateCash = (amount: number) => {
@@ -153,25 +163,24 @@ function ScheduleAndBudgetContent() {
   const handleAddItem = (newItem: Omit<Item, 'id'>) => {
     const item: Item = {
       ...newItem,
-      id: Date.now().toString(),
+      id: createId(),
     };
-    setItems([...items, item]);
+    setItems(prevItems => [...prevItems, item]);
   };
 
   const handleDeleteItem = (id: string) => {
-    setItems(items.filter(item => item.id !== id));
+    setItems(prevItems => prevItems.filter(item => item.id !== id));
   };
 
   const handleSellItem = (itemId: string, itemName: string, salePrice: number) => {
-    setItems(items.filter(item => item.id !== itemId));
-    const newCashAmount = cashAmount + salePrice;
-    setCashAmount(newCashAmount);
+    setItems(prevItems => prevItems.filter(item => item.id !== itemId));
+    const newCashAmount = setCashAmount(previousCashAmount => previousCashAmount + salePrice);
     addCashTransaction('income', salePrice, `Sold: ${itemName}`, newCashAmount);
   };
 
   const handleScheduleSale = (itemId: string, itemName: string, salePrice: number, saleDate: Date) => {
     const saleSchedule: Schedule = {
-      id: Date.now().toString(),
+      id: createId(),
       title: `${itemName} 매도`,
       date: saleDate,
       requiredAmount: salePrice,
@@ -179,47 +188,40 @@ function ScheduleAndBudgetContent() {
       isSaleSchedule: true,
       itemId: itemId,
     };
-    setSchedules([...schedules, saleSchedule]);
+    setSchedules(prevSchedules => [...prevSchedules, saleSchedule]);
   };
 
   const handleAddDebt = (newDebt: Omit<Debt, 'id'>) => {
     const debt: Debt = {
       ...newDebt,
-      id: Date.now().toString(),
+      id: createId(),
     };
-    setDebts([...debts, debt]);
+    setDebts(prevDebts => [...prevDebts, debt]);
   };
 
   const handleDeleteDebt = (id: string) => {
-    const debtToRepay = debts.find(debt => debt.id === id);
-    if (debtToRepay) {
-      const newCashAmount = cashAmount - debtToRepay.amount;
-      setCashAmount(newCashAmount);
-      addCashTransaction('expense', debtToRepay.amount, `Debt cleared: ${debtToRepay.name}`, newCashAmount);
-    }
+    // Deleting a debt record should not also perform a repayment.
     setDebts(prevDebts => prevDebts.filter(debt => debt.id !== id));
   };
 
   const handleAddLoan = (newLoan: Omit<Loan, 'id'>) => {
     const loan: Loan = {
       ...newLoan,
-      id: Date.now().toString(),
+      id: createId(),
     };
-    const newCashAmount = cashAmount - newLoan.amount;
-    setCashAmount(newCashAmount);
+    const newCashAmount = setCashAmount(previousCashAmount => previousCashAmount - newLoan.amount);
     addCashTransaction('expense', newLoan.amount, `Loan given: ${newLoan.name}`, newCashAmount);
-    setLoans([...loans, loan]);
+    setLoans(prevLoans => [...prevLoans, loan]);
   };
 
   const handleDeleteLoan = (id: string) => {
-    setLoans(loans.filter(loan => loan.id !== id));
+    setLoans(prevLoans => prevLoans.filter(loan => loan.id !== id));
   };
 
   const handleRepayLoan = (id: string) => {
     const loanToRepay = loans.find(loan => loan.id === id);
     if (loanToRepay) {
-      const newCashAmount = cashAmount + loanToRepay.amount;
-      setCashAmount(newCashAmount);
+      const newCashAmount = setCashAmount(previousCashAmount => previousCashAmount + loanToRepay.amount);
       addCashTransaction('income', loanToRepay.amount, `Loan received: ${loanToRepay.name}`, newCashAmount);
     }
     setLoans(prevLoans => prevLoans.filter(loan => loan.id !== id));
@@ -228,43 +230,40 @@ function ScheduleAndBudgetContent() {
   const handleAddBudget = (newBudget: Omit<Budget, 'id'>) => {
     const budget: Budget = {
       ...newBudget,
-      id: Date.now().toString(),
+      id: createId(),
     };
-    setBudgets([...budgets, budget]);
+    setBudgets(prevBudgets => [...prevBudgets, budget]);
   };
 
   const handleDeleteBudget = (id: string) => {
-    setBudgets(budgets.filter(budget => budget.id !== id));
+    setBudgets(prevBudgets => prevBudgets.filter(budget => budget.id !== id));
   };
 
   const handleAddExpense = (newExpense: Omit<Expense, 'id'>) => {
     const expense: Expense = {
       ...newExpense,
-      id: Date.now().toString(),
+      id: createId(),
     };
-    setExpenses([...expenses, expense]);
+    setExpenses(prevExpenses => [...prevExpenses, expense]);
     
     // Deduct from cash and add transaction history
-    const newCashAmount = cashAmount - newExpense.amount;
-    setCashAmount(newCashAmount);
+    const newCashAmount = setCashAmount(previousCashAmount => previousCashAmount - newExpense.amount);
     addCashTransaction('expense', newExpense.amount, `Expense: ${newExpense.description || newExpense.category}`, newCashAmount);
   };
 
   const handleDeleteExpense = (id: string) => {
     const expenseToDelete = expenses.find(e => e.id === id);
     if (expenseToDelete) {
-      const newCashAmount = cashAmount + expenseToDelete.amount;
-      setCashAmount(newCashAmount);
+      const newCashAmount = setCashAmount(previousCashAmount => previousCashAmount + expenseToDelete.amount);
       addCashTransaction('income', expenseToDelete.amount, `Expense deleted: ${expenseToDelete.description || expenseToDelete.category}`, newCashAmount);
     }
-    setExpenses(expenses.filter(expense => expense.id !== id));
+    setExpenses(prevExpenses => prevExpenses.filter(expense => expense.id !== id));
   };
 
   const handleRepayDebt = (id: string) => {
     const debtToRepay = debts.find(debt => debt.id === id);
     if (debtToRepay) {
-      const newCashAmount = cashAmount - debtToRepay.amount;
-      setCashAmount(newCashAmount);
+      const newCashAmount = setCashAmount(previousCashAmount => previousCashAmount - debtToRepay.amount);
       addCashTransaction('expense', debtToRepay.amount, `Debt repaid: ${debtToRepay.name}`, newCashAmount);
     }
     setDebts(prevDebts => prevDebts.filter(debt => debt.id !== id));

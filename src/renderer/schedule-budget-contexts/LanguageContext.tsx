@@ -253,6 +253,9 @@ const translations = {
   },
 };
 
+const isLanguage = (value: string | null): value is Language =>
+  value === "ko" || value === "en";
+
 export function LanguageProvider({
   children,
 }: {
@@ -260,7 +263,7 @@ export function LanguageProvider({
 }) {
   const [language, setLanguage] = useState<Language>(() => {
     const saved = localStorage.getItem("language");
-    return (saved as Language) || "ko";
+    return isLanguage(saved) ? saved : "ko";
   });
 
   useEffect(() => {
@@ -268,11 +271,7 @@ export function LanguageProvider({
   }, [language]);
 
   const t = (key: string): string => {
-    return (
-      translations[language][
-        key as keyof typeof translations.ko
-      ] || key
-    );
+    return translations[language]?.[key as keyof typeof translations.ko] || key;
   };
 
   return (
