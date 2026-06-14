@@ -29,6 +29,7 @@ import {
 import { v4 as uuidv4 } from 'uuid';
 import { randomUUID } from 'crypto';
 import { resolveHtmlPath } from './util';
+import { validateLocalDatabaseDeletePath } from './databasePaths';
 
 // 세션 관리
 let currentSessionId = uuidv4();
@@ -2155,11 +2156,16 @@ ipcMain.handle('change-database-path', async (event, newPath: string) => {
   try {
     const success = setDatabasePath(newPath);
     if (success) {
-      // DB 경로 변경 후 앱 재시작이 필요함을 알림
+      // initdb.ts는 시작 시점에 DB 연결을 고정하므로 경로 변경 즉시 재시작해야 한다.
+      setTimeout(() => {
+        app.relaunch();
+        app.exit(0);
+      }, 100);
+
       return {
         success: true,
-        message: 'DB 경로가 변경되었습니다. 변경사항을 적용하려면 앱을 재시작해주세요.',
-        requiresRestart: true
+        message: 'DB 경로가 변경되었습니다. 앱을 재시작합니다.',
+        requiresRestart: false
       };
     } else {
       return { success: false, error: 'Failed to change database path' };
@@ -2236,6 +2242,17 @@ ipcMain.handle('get-local-databases', async () => {
 // 로컬 DB 삭제
 ipcMain.handle('delete-local-database', async (event, dbPath: string) => {
   try {
+    const localDbDir = path.join(app.getPath('userData'), 'local-databases');
+    const validation = validateLocalDatabaseDeletePath(
+      dbPath,
+      localDbDir,
+      getDatabasePath(),
+    );
+
+    if (!validation.valid) {
+      return { success: false, error: validation.error };
+    }
+
     if (fs.existsSync(dbPath)) {
       fs.unlinkSync(dbPath);
       return { success: true };
