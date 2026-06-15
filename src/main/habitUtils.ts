@@ -8,13 +8,13 @@ import { getHabitNumber, getHabitString } from './safetyUtils';
  */
 export interface HabitExpansionInput {
   cardId: string;
-  dtstartLocal: string; // 'YYYY-MM-DDTHH:MM:SS'
-  tzid: string; // e.g., 'Asia/Seoul'
-  rrule: string; // RFC5545
-  rdates?: string[]; // ISO8601 local
-  exdates?: string[]; // ISO8601 local
+  dtstartLocal: string;   // 'YYYY-MM-DDTHH:MM:SS'
+  tzid: string;           // e.g., 'Asia/Seoul'
+  rrule: string;          // RFC5545
+  rdates?: string[];      // ISO8601 local
+  exdates?: string[];     // ISO8601 local
   windowStartUtc: string; // ISO8601Z
-  windowEndUtc: string; // ISO8601Z
+  windowEndUtc: string;   // ISO8601Z
   durationMinutes?: number; // 기본 0 (체크형)
 }
 
@@ -81,10 +81,7 @@ function generateOccurrenceKey(utcTimeStr: string): string {
 /**
  * RRULE 전개 및 인스턴스 캐시 upsert
  */
-export async function expandAndUpsertInstances(
-  db: Database.Database,
-  input: HabitExpansionInput,
-): Promise<void> {
+export async function expandAndUpsertInstances(db: Database.Database, input: HabitExpansionInput): Promise<void> {
   const transaction = db.transaction(() => {
     try {
       // 기존 캐시에서 해당 범위 삭제
@@ -101,12 +98,8 @@ export async function expandAndUpsertInstances(
       const dtstart = DateTime.fromISO(dtstartUtc, { zone: 'utc' }).toJSDate();
 
       // 윈도우 범위
-      const windowStart = DateTime.fromISO(input.windowStartUtc, {
-        zone: 'utc',
-      }).toJSDate();
-      const windowEnd = DateTime.fromISO(input.windowEndUtc, {
-        zone: 'utc',
-      }).toJSDate();
+      const windowStart = DateTime.fromISO(input.windowStartUtc, { zone: 'utc' }).toJSDate();
+      const windowEnd = DateTime.fromISO(input.windowEndUtc, { zone: 'utc' }).toJSDate();
 
       // RRule 객체 생성
       const rrule = rrulestr(input.rrule, { dtstart });
@@ -118,39 +111,35 @@ export async function expandAndUpsertInstances(
       let allInstances = [...instances];
       if (input.rdates && input.rdates.length > 0) {
         const rdateInstances = input.rdates
-          .map((rdate) => {
+          .map(rdate => {
             const rdateUtc = localToUtc(rdate, input.tzid);
-            const rdateDate = DateTime.fromISO(rdateUtc, {
-              zone: 'utc',
-            }).toJSDate();
+            const rdateDate = DateTime.fromISO(rdateUtc, { zone: 'utc' }).toJSDate();
             return rdateDate;
           })
-          .filter((date) => date >= windowStart && date <= windowEnd);
-
+          .filter(date => date >= windowStart && date <= windowEnd);
+        
         allInstances = [...allInstances, ...rdateInstances];
       }
 
       // EXDATE 제외 (있다면)
       let finalInstances = allInstances;
       if (input.exdates && input.exdates.length > 0) {
-        const exdatesUtc = input.exdates.map((exdate) => {
+        const exdatesUtc = input.exdates.map(exdate => {
           const exdateUtc = localToUtc(exdate, input.tzid);
           return DateTime.fromISO(exdateUtc, { zone: 'utc' }).toJSDate();
         });
-
-        finalInstances = allInstances.filter((instance) => {
-          return !exdatesUtc.some(
-            (exdate) => Math.abs(instance.getTime() - exdate.getTime()) < 1000, // 1초 오차 허용
+        
+        finalInstances = allInstances.filter(instance => {
+          return !exdatesUtc.some(exdate => 
+            Math.abs(instance.getTime() - exdate.getTime()) < 1000 // 1초 오차 허용
           );
         });
       }
 
       // 중복 제거 및 정렬
       const uniqueInstances = Array.from(
-        new Set(finalInstances.map((d) => d.getTime())),
-      )
-        .map((time) => new Date(time))
-        .sort((a, b) => a.getTime() - b.getTime());
+        new Set(finalInstances.map(d => d.getTime()))
+      ).map(time => new Date(time)).sort((a, b) => a.getTime() - b.getTime());
 
       // 인스턴스 캐시에 삽입
       const insertStmt = db.prepare(`
@@ -162,12 +151,11 @@ export async function expandAndUpsertInstances(
       for (const instance of uniqueInstances) {
         const startUtc = DateTime.fromJSDate(instance, { zone: 'utc' }).toISO();
         const occurrenceKey = generateOccurrenceKey(startUtc || '');
-
+        
         let endUtc = null;
         if (input.durationMinutes && input.durationMinutes > 0) {
-          const endTime = DateTime.fromJSDate(instance, { zone: 'utc' }).plus({
-            minutes: input.durationMinutes,
-          });
+          const endTime = DateTime.fromJSDate(instance, { zone: 'utc' })
+            .plus({ minutes: input.durationMinutes });
           endUtc = endTime.toISO();
         }
 
@@ -179,6 +167,7 @@ export async function expandAndUpsertInstances(
           0, // is_exception
         );
       }
+
     } catch (error) {
       console.error('Error in expandAndUpsertInstances:', error);
       throw error;
@@ -192,11 +181,11 @@ export async function expandAndUpsertInstances(
  * 습관 체크 (멱등 처리)
  */
 export async function checkHabit(
-  db: Database.Database,
-  cardId: string,
-  occurrenceKeyUtc: string,
-  quantity: number = 1,
-  note?: string,
+  db: Database.Database, 
+  cardId: string, 
+  occurrenceKeyUtc: string, 
+  quantity: number = 1, 
+  note?: string
 ): Promise<void> {
   const transaction = db.transaction(() => {
     const stmt = db.prepare(`
@@ -207,17 +196,10 @@ export async function checkHabit(
         datetime('now')
       )
     `);
-
-    stmt.run(
-      cardId,
-      occurrenceKeyUtc,
-      quantity,
-      note || null,
-      cardId,
-      occurrenceKeyUtc,
-    );
+    
+    stmt.run(cardId, occurrenceKeyUtc, quantity, note || null, cardId, occurrenceKeyUtc);
   });
-
+  
   transaction();
 }
 
@@ -225,19 +207,19 @@ export async function checkHabit(
  * 습관 언체크 (멱등 처리)
  */
 export async function uncheckHabit(
-  db: Database.Database,
-  cardId: string,
-  occurrenceKeyUtc: string,
+  db: Database.Database, 
+  cardId: string, 
+  occurrenceKeyUtc: string
 ): Promise<void> {
   const transaction = db.transaction(() => {
     const stmt = db.prepare(`
       DELETE FROM habit_logs 
       WHERE card_id = ? AND occurrence_key = ?
     `);
-
+    
     stmt.run(cardId, occurrenceKeyUtc);
   });
-
+  
   transaction();
 }
 
@@ -245,15 +227,15 @@ export async function uncheckHabit(
  * 수량 설정 (멱등 처리)
  */
 export async function setQuantity(
-  db: Database.Database,
-  cardId: string,
-  occurrenceKeyUtc: string,
-  quantity: number,
+  db: Database.Database, 
+  cardId: string, 
+  occurrenceKeyUtc: string, 
+  quantity: number
 ): Promise<void> {
   if (quantity <= 0) {
     return uncheckHabit(db, cardId, occurrenceKeyUtc);
   }
-
+  
   return checkHabit(db, cardId, occurrenceKeyUtc, quantity);
 }
 
@@ -261,14 +243,14 @@ export async function setQuantity(
  * 오늘 미완료 습관들 조회
  */
 export async function getTodayPending(
-  db: Database.Database,
-  localDayStartIso: string,
-  localDayEndIso: string,
-  tzid: string,
+  db: Database.Database, 
+  localDayStartIso: string, 
+  localDayEndIso: string, 
+  tzid: string
 ) {
   const dayStartUtc = localToUtc(localDayStartIso, tzid);
   const dayEndUtc = localToUtc(localDayEndIso, tzid);
-
+  
   const stmt = db.prepare(`
     SELECT 
       hic.*,
@@ -290,7 +272,7 @@ export async function getTodayPending(
     AND hl.id IS NULL
     ORDER BY hic.start_utc
   `);
-
+  
   return stmt.all(dayStartUtc, dayEndUtc);
 }
 
@@ -298,14 +280,14 @@ export async function getTodayPending(
  * 오늘 완료된 습관들 조회
  */
 export async function getTodayDone(
-  db: Database.Database,
-  localDayStartIso: string,
-  localDayEndIso: string,
-  tzid: string,
+  db: Database.Database, 
+  localDayStartIso: string, 
+  localDayEndIso: string, 
+  tzid: string
 ) {
   const dayStartUtc = localToUtc(localDayStartIso, tzid);
   const dayEndUtc = localToUtc(localDayEndIso, tzid);
-
+  
   const stmt = db.prepare(`
     SELECT 
       hic.*,
@@ -328,7 +310,7 @@ export async function getTodayDone(
     AND hp.deleted_at IS NULL
     ORDER BY hic.start_utc
   `);
-
+  
   return stmt.all(dayStartUtc, dayEndUtc);
 }
 
@@ -336,13 +318,13 @@ export async function getTodayDone(
  * 최근 N일간 달성률 계산
  */
 export async function getAdherenceLastNDays(
-  db: Database.Database,
+  db: Database.Database, 
   cardId: string,
-  days: number = 30,
+  days: number = 30
 ): Promise<number> {
   const endDate = DateTime.now().toUTC();
   const startDate = endDate.minus({ days });
-
+  
   const totalStmt = db.prepare(`
     SELECT COUNT(*) as total
     FROM habit_instances_cache 
@@ -351,7 +333,7 @@ export async function getAdherenceLastNDays(
     AND start_utc <= ?
     AND is_exception = 0
   `);
-
+  
   const completedStmt = db.prepare(`
     SELECT COUNT(*) as completed
     FROM habit_instances_cache hic
@@ -361,31 +343,20 @@ export async function getAdherenceLastNDays(
     AND hic.start_utc <= ?
     AND hic.is_exception = 0
   `);
-
-  const totalResult = totalStmt.get(
-    cardId,
-    startDate.toISO(),
-    endDate.toISO(),
-  ) as any;
-  const completedResult = completedStmt.get(
-    cardId,
-    startDate.toISO(),
-    endDate.toISO(),
-  ) as any;
-
+  
+  const totalResult = totalStmt.get(cardId, startDate.toISO(), endDate.toISO()) as any;
+  const completedResult = completedStmt.get(cardId, startDate.toISO(), endDate.toISO()) as any;
+  
   const total = totalResult?.total || 0;
   const completed = completedResult?.completed || 0;
-
+  
   return total > 0 ? (completed / total) * 100 : 0;
 }
 
 /**
  * 현재 스트릭 계산 (역순으로 연속 완료 구간)
  */
-export async function getCurrentStreak(
-  db: Database.Database,
-  cardId: string,
-): Promise<number> {
+export async function getCurrentStreak(db: Database.Database, cardId: string): Promise<number> {
   const stmt = db.prepare(`
     SELECT 
       hic.occurrence_key,
@@ -398,10 +369,10 @@ export async function getCurrentStreak(
     AND hic.start_utc <= datetime('now')
     ORDER BY hic.start_utc DESC
   `);
-
+  
   const instances = stmt.all(cardId) as any[];
   let streak = 0;
-
+  
   for (const instance of instances) {
     if (instance.is_completed) {
       streak++;
@@ -409,17 +380,14 @@ export async function getCurrentStreak(
       break;
     }
   }
-
+  
   return streak;
 }
 
 /**
  * 최장 스트릭 계산
  */
-export async function getLongestStreak(
-  db: Database.Database,
-  cardId: string,
-): Promise<number> {
+export async function getLongestStreak(db: Database.Database, cardId: string): Promise<number> {
   const stmt = db.prepare(`
     SELECT 
       hic.occurrence_key,
@@ -431,11 +399,11 @@ export async function getLongestStreak(
     AND hic.is_exception = 0
     ORDER BY hic.start_utc ASC
   `);
-
+  
   const instances = stmt.all(cardId) as any[];
   let maxStreak = 0;
   let currentStreak = 0;
-
+  
   for (const instance of instances) {
     if (instance.is_completed) {
       currentStreak++;
@@ -444,7 +412,7 @@ export async function getLongestStreak(
       currentStreak = 0;
     }
   }
-
+  
   return maxStreak;
 }
 
@@ -452,10 +420,10 @@ export async function getLongestStreak(
  * RRULE 변경 시 캐시 재전개 처리
  */
 export async function onRRuleUpdated(
-  db: Database.Database,
+  db: Database.Database, 
   cardId: string,
   _oldProps: Partial<HabitProperties>,
-  newProps: Partial<HabitProperties>,
+  newProps: Partial<HabitProperties>
 ): Promise<void> {
   const transaction = db.transaction(() => {
     try {
@@ -463,7 +431,7 @@ export async function onRRuleUpdated(
       const now = DateTime.now().toUTC();
       const windowStart = now.minus({ weeks: 6 });
       const windowEnd = now.plus({ weeks: 6 });
-
+      
       // 영향 범위의 기존 캐시 삭제 (미래분만 - 과거 로그는 보존)
       const deleteStmt = db.prepare(`
         DELETE FROM habit_instances_cache 
@@ -471,27 +439,14 @@ export async function onRRuleUpdated(
         AND start_utc >= ?
       `);
       deleteStmt.run(cardId, now.toISO());
-
+      
       const habitProps = newProps as Record<string, unknown>;
-      const dtstartLocal = getHabitString(
-        habitProps,
-        'dtstartLocal',
-        'dtstart_local',
-      );
+      const dtstartLocal = getHabitString(habitProps, 'dtstartLocal', 'dtstart_local');
       const tzid = getHabitString(habitProps, 'tzid', 'tzid');
       const rrule = getHabitString(habitProps, 'rrule', 'rrule');
-      const rdatesJson = getHabitString(
-        habitProps,
-        'rdatesJson',
-        'rdates_json',
-      );
-      const exdatesJson = getHabitString(
-        habitProps,
-        'exdatesJson',
-        'exdates_json',
-      );
-      const durationMinutes =
-        getHabitNumber(habitProps, 'durationMinutes', 'duration_minutes') || 0;
+      const rdatesJson = getHabitString(habitProps, 'rdatesJson', 'rdates_json');
+      const exdatesJson = getHabitString(habitProps, 'exdatesJson', 'exdates_json');
+      const durationMinutes = getHabitNumber(habitProps, 'durationMinutes', 'duration_minutes') || 0;
 
       // 새로운 RRULE로 캐시 재생성
       if (dtstartLocal && tzid && rrule) {
@@ -504,28 +459,26 @@ export async function onRRuleUpdated(
           exdates: exdatesJson ? JSON.parse(exdatesJson) : undefined,
           windowStartUtc: windowStart.toISO() || '',
           windowEndUtc: windowEnd.toISO() || '',
-          durationMinutes,
+          durationMinutes
         };
-
+        
         // 동기 버전으로 직접 호출 (이미 트랜잭션 내부이므로)
         expandAndUpsertInstancesSync(db, expansionInput);
       }
+      
     } catch (error) {
       console.error('Error in onRRuleUpdated:', error);
       throw error;
     }
   });
-
+  
   transaction();
 }
 
 /**
  * 동기 버전의 인스턴스 전개 (트랜잭션 내부용)
  */
-function expandAndUpsertInstancesSync(
-  db: Database.Database,
-  input: HabitExpansionInput,
-): void {
+function expandAndUpsertInstancesSync(db: Database.Database, input: HabitExpansionInput): void {
   // 기존 캐시에서 해당 범위 삭제
   const deleteStmt = db.prepare(`
     DELETE FROM habit_instances_cache 
@@ -540,12 +493,8 @@ function expandAndUpsertInstancesSync(
   const dtstart = DateTime.fromISO(dtstartUtc, { zone: 'utc' }).toJSDate();
 
   // 윈도우 범위
-  const windowStart = DateTime.fromISO(input.windowStartUtc, {
-    zone: 'utc',
-  }).toJSDate();
-  const windowEnd = DateTime.fromISO(input.windowEndUtc, {
-    zone: 'utc',
-  }).toJSDate();
+  const windowStart = DateTime.fromISO(input.windowStartUtc, { zone: 'utc' }).toJSDate();
+  const windowEnd = DateTime.fromISO(input.windowEndUtc, { zone: 'utc' }).toJSDate();
 
   // RRule 객체 생성
   const rrule = rrulestr(input.rrule, { dtstart });
@@ -557,35 +506,33 @@ function expandAndUpsertInstancesSync(
   let allInstances = [...instances];
   if (input.rdates && input.rdates.length > 0) {
     const rdateInstances = input.rdates
-      .map((rdate) => {
+      .map(rdate => {
         const rdateUtc = localToUtc(rdate, input.tzid);
         return DateTime.fromISO(rdateUtc, { zone: 'utc' }).toJSDate();
       })
-      .filter((date) => date >= windowStart && date <= windowEnd);
-
+      .filter(date => date >= windowStart && date <= windowEnd);
+    
     allInstances = [...allInstances, ...rdateInstances];
   }
 
   let finalInstances = allInstances;
   if (input.exdates && input.exdates.length > 0) {
-    const exdatesUtc = input.exdates.map((exdate) => {
+    const exdatesUtc = input.exdates.map(exdate => {
       const exdateUtc = localToUtc(exdate, input.tzid);
       return DateTime.fromISO(exdateUtc, { zone: 'utc' }).toJSDate();
     });
-
-    finalInstances = allInstances.filter((instance) => {
-      return !exdatesUtc.some(
-        (exdate) => Math.abs(instance.getTime() - exdate.getTime()) < 1000,
+    
+    finalInstances = allInstances.filter(instance => {
+      return !exdatesUtc.some(exdate => 
+        Math.abs(instance.getTime() - exdate.getTime()) < 1000
       );
     });
   }
 
   // 중복 제거 및 정렬
   const uniqueInstances = Array.from(
-    new Set(finalInstances.map((d) => d.getTime())),
-  )
-    .map((time) => new Date(time))
-    .sort((a, b) => a.getTime() - b.getTime());
+    new Set(finalInstances.map(d => d.getTime()))
+  ).map(time => new Date(time)).sort((a, b) => a.getTime() - b.getTime());
 
   // 인스턴스 캐시에 삽입
   const insertStmt = db.prepare(`
@@ -597,12 +544,11 @@ function expandAndUpsertInstancesSync(
   for (const instance of uniqueInstances) {
     const startUtc = DateTime.fromJSDate(instance, { zone: 'utc' }).toISO();
     const occurrenceKey = generateOccurrenceKey(startUtc || '');
-
+    
     let endUtc = null;
     if (input.durationMinutes && input.durationMinutes > 0) {
-      const endTime = DateTime.fromJSDate(instance, { zone: 'utc' }).plus({
-        minutes: input.durationMinutes,
-      });
+      const endTime = DateTime.fromJSDate(instance, { zone: 'utc' })
+        .plus({ minutes: input.durationMinutes });
       endUtc = endTime.toISO();
     }
 
