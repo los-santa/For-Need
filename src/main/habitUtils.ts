@@ -1,6 +1,7 @@
 import { RRule, RRuleSet, rrulestr } from 'rrule';
 import { DateTime } from 'luxon';
 import Database from 'better-sqlite3';
+import { getHabitNumber, getHabitString } from './safetyUtils';
 
 /**
  * RRULE 전개 입력 인터페이스
@@ -420,8 +421,8 @@ export async function getLongestStreak(db: Database.Database, cardId: string): P
  */
 export async function onRRuleUpdated(
   db: Database.Database, 
-  cardId: string, 
-  oldProps: Partial<HabitProperties>, 
+  cardId: string,
+  _oldProps: Partial<HabitProperties>,
   newProps: Partial<HabitProperties>
 ): Promise<void> {
   const transaction = db.transaction(() => {
@@ -439,18 +440,26 @@ export async function onRRuleUpdated(
       `);
       deleteStmt.run(cardId, now.toISO());
       
+      const habitProps = newProps as Record<string, unknown>;
+      const dtstartLocal = getHabitString(habitProps, 'dtstartLocal', 'dtstart_local');
+      const tzid = getHabitString(habitProps, 'tzid', 'tzid');
+      const rrule = getHabitString(habitProps, 'rrule', 'rrule');
+      const rdatesJson = getHabitString(habitProps, 'rdatesJson', 'rdates_json');
+      const exdatesJson = getHabitString(habitProps, 'exdatesJson', 'exdates_json');
+      const durationMinutes = getHabitNumber(habitProps, 'durationMinutes', 'duration_minutes') || 0;
+
       // 새로운 RRULE로 캐시 재생성
-      if (newProps.dtstartLocal && newProps.tzid && newProps.rrule) {
+      if (dtstartLocal && tzid && rrule) {
         const expansionInput: HabitExpansionInput = {
           cardId,
-          dtstartLocal: newProps.dtstartLocal,
-          tzid: newProps.tzid,
-          rrule: newProps.rrule,
-          rdates: newProps.rdatesJson ? JSON.parse(newProps.rdatesJson) : undefined,
-          exdates: newProps.exdatesJson ? JSON.parse(newProps.exdatesJson) : undefined,
+          dtstartLocal,
+          tzid,
+          rrule,
+          rdates: rdatesJson ? JSON.parse(rdatesJson) : undefined,
+          exdates: exdatesJson ? JSON.parse(exdatesJson) : undefined,
           windowStartUtc: windowStart.toISO() || '',
           windowEndUtc: windowEnd.toISO() || '',
-          durationMinutes: newProps.durationMinutes || 0
+          durationMinutes
         };
         
         // 동기 버전으로 직접 호출 (이미 트랜잭션 내부이므로)

@@ -8,8 +8,9 @@
  * When running `npm run build` or `npm run build:main`, this file is compiled to
  * `./src/main.js` using webpack. This gives us some performance wins.
  */
+import fs from 'fs';
 import path from 'path';
-import { app, BrowserWindow, ipcMain } from 'electron';
+import { app, BrowserWindow, dialog, ipcMain, shell } from 'electron';
 import log from 'electron-log';
 import db from './initdb';
 import {
@@ -29,6 +30,12 @@ import {
 import { v4 as uuidv4 } from 'uuid';
 import { randomUUID } from 'crypto';
 import { resolveHtmlPath } from './util';
+import {
+  buildHabitUpdatePlan,
+  hasRRuleAffectingColumns,
+  isSafeLocalDatabasePath
+} from './safetyUtils';
+import { loadSettings, saveSettings, setDatabasePath, getDatabasePath, getRecentDbPaths, removeFromRecentDbPaths } from './settings';
 
 // 세션 관리
 let currentSessionId = uuidv4();
@@ -1675,34 +1682,27 @@ ipcMain.handle('update-habit', async (event, cardId: string, updates: Partial<Ha
       return { success: false, error: 'Habit not found' };
     }
 
-    // 업데이트 쿼리 생성
-    const updateFields: string[] = [];
-    const values: any[] = [];
+    const updatePlan = buildHabitUpdatePlan(updates as Record<string, unknown>);
+    if (!updatePlan.success) {
+      return { success: false, error: updatePlan.error, field: updatePlan.field };
+    }
 
-    Object.entries(updates).forEach(([key, value]) => {
-      if (value !== undefined) {
-        updateFields.push(`${key} = ?`);
-        values.push(value);
-      }
-    });
-
-    if (updateFields.length === 0) {
+    if (updatePlan.assignments.length === 0) {
       return { success: true, data: oldHabit };
     }
 
-    values.push(cardId);
+    const values = [...updatePlan.values, cardId];
 
     const updateStmt = db.prepare(`
       UPDATE habit_properties
-      SET ${updateFields.join(', ')}
+      SET ${updatePlan.assignments.join(', ')}
       WHERE card_id = ?
     `);
 
     updateStmt.run(...values);
 
     // RRULE 관련 변경사항이 있다면 캐시 재전개
-    const rruleChanged = updates.rrule || updates.dtstartLocal || updates.tzid ||
-                        updates.rdatesJson || updates.exdatesJson;
+    const rruleChanged = hasRRuleAffectingColumns(updatePlan.changedColumns);
 
     if (rruleChanged) {
       const newHabit = db.prepare('SELECT * FROM habit_properties WHERE card_id = ?').get(cardId) as HabitProperties;
@@ -2053,10 +2053,10 @@ ipcMain.handle('get-project-cards', async (event, projectId: string) => {
       SELECT
         c.*,
         ct.cardtype_name,
-        COUNT(r.id) as relation_count
+        COUNT(r.relation_id) as relation_count
       FROM CARDS c
       LEFT JOIN CARDTYPES ct ON c.cardtype = ct.cardtype_id
-      LEFT JOIN RELATIONS r ON (c.id = r.source_card OR c.id = r.target_card) AND r.deleted_at IS NULL
+      LEFT JOIN RELATION r ON (c.id = r.source OR c.id = r.target) AND r.deleted_at IS NULL
       WHERE c.project_id = ? AND c.deleted_at IS NULL
       GROUP BY c.id
       ORDER BY c.createdat DESC
@@ -2072,12 +2072,6 @@ ipcMain.handle('get-project-cards', async (event, projectId: string) => {
 // =========================
 // 설정 관리 기능
 // =========================
-
-import { dialog } from 'electron';
-import { loadSettings, saveSettings, setDatabasePath, getDatabasePath, getRecentDbPaths, removeFromRecentDbPaths } from './settings';
-import { shell } from 'electron';
-import path from 'path';
-import fs from 'fs';
 
 // 현재 설정 가져오기
 ipcMain.handle('get-settings', async () => {
@@ -2236,8 +2230,20 @@ ipcMain.handle('get-local-databases', async () => {
 // 로컬 DB 삭제
 ipcMain.handle('delete-local-database', async (event, dbPath: string) => {
   try {
-    if (fs.existsSync(dbPath)) {
-      fs.unlinkSync(dbPath);
+    const localDbDir = path.join(app.getPath('userData'), 'local-databases');
+    const resolvedDbPath = path.resolve(dbPath);
+
+    if (!isSafeLocalDatabasePath(resolvedDbPath, localDbDir)) {
+      return { success: false, error: 'Invalid database path' };
+    }
+
+    if (fs.existsSync(resolvedDbPath)) {
+      const stats = fs.statSync(resolvedDbPath);
+      if (!stats.isFile()) {
+        return { success: false, error: 'Invalid database file' };
+      }
+
+      fs.unlinkSync(resolvedDbPath);
       return { success: true };
     } else {
       return { success: false, error: 'File not found' };
