@@ -32,9 +32,19 @@ db.exec(`
 `);
 
 // 기본 카드타입 데이터 삽입 (존재하지 않을 때만)
-const defaultTypes = ['no type yet','todo','entity','habit','action','destination','IF'];
-defaultTypes.forEach(name=>{
-  db.prepare("INSERT OR IGNORE INTO CARDTYPES (cardtype_name, createdat) VALUES (?, datetime('now'))").run(name);
+const defaultTypes = [
+  'no type yet',
+  'todo',
+  'entity',
+  'habit',
+  'action',
+  'destination',
+  'IF',
+];
+defaultTypes.forEach((name) => {
+  db.prepare(
+    "INSERT OR IGNORE INTO CARDTYPES (cardtype_name, createdat) VALUES (?, datetime('now'))",
+  ).run(name);
 });
 
 // 프로젝트 테이블 생성
@@ -116,8 +126,10 @@ db.exec(`
 // 현재 별칭 테이블 마이그레이션 (여러 별칭 지원)
 try {
   // 기존 테이블 구조 확인
-  const tableInfo = db.prepare("PRAGMA table_info(CURRENT_ALIAS)").all();
-  const hasPrimaryKeyConstraint = tableInfo.some((col: any) => col.pk === 1 && col.name === 'card_id');
+  const tableInfo = db.prepare('PRAGMA table_info(CURRENT_ALIAS)').all();
+  const hasPrimaryKeyConstraint = tableInfo.some(
+    (col: any) => col.pk === 1 && col.name === 'card_id',
+  );
 
   if (hasPrimaryKeyConstraint) {
     console.log('Migrating CURRENT_ALIAS table to support multiple aliases...');
@@ -140,7 +152,9 @@ try {
 
     // 기존 데이터 복원
     if (existingData.length > 0) {
-      const insertStmt = db.prepare('INSERT INTO CURRENT_ALIAS (card_id, alias_id, createdat) VALUES (?, ?, ?)');
+      const insertStmt = db.prepare(
+        'INSERT INTO CURRENT_ALIAS (card_id, alias_id, createdat) VALUES (?, ?, ?)',
+      );
       for (const row of existingData) {
         insertStmt.run(row.card_id, row.alias_id, row.createdat);
       }
@@ -164,20 +178,24 @@ db.exec(`
   )
 `);
 
-// 기존 카드들을 'todo' 카드타입으로 마이그레이션
+// 기존 카드 중 카드타입이 비어 있는 항목만 'todo'로 보정
 try {
-  console.log('Migrating existing cards to todo cardtype...');
+  console.log('Backfilling missing cardtype values to todo...');
 
   // 'todo' 카드타입 ID 가져오기
-  const todoCardType = db.prepare("SELECT cardtype_id FROM CARDTYPES WHERE cardtype_name = 'todo'").get() as any;
+  const todoCardType = db
+    .prepare("SELECT cardtype_id FROM CARDTYPES WHERE cardtype_name = 'todo'")
+    .get() as any;
 
   if (todoCardType) {
-    // 카드타입이 NULL이거나 다른 카드타입인 모든 카드를 'todo'로 업데이트
-    const updateResult = db.prepare("UPDATE CARDS SET cardtype = ? WHERE cardtype IS NULL OR cardtype != ?")
-      .run(todoCardType.cardtype_id, todoCardType.cardtype_id);
+    const updateResult = db
+      .prepare('UPDATE CARDS SET cardtype = ? WHERE cardtype IS NULL')
+      .run(todoCardType.cardtype_id);
 
     if (updateResult.changes > 0) {
-      console.log(`Updated ${updateResult.changes} cards to 'todo' cardtype`);
+      console.log(
+        `Backfilled ${updateResult.changes} cards to 'todo' cardtype`,
+      );
     }
   }
 } catch (error) {
@@ -397,7 +415,9 @@ db.exec(`
 
 // 'habit' 카드타입이 없으면 추가
 try {
-  db.prepare("INSERT OR IGNORE INTO CARDTYPES (cardtype_name, createdat) VALUES ('habit', datetime('now'))").run();
+  db.prepare(
+    "INSERT OR IGNORE INTO CARDTYPES (cardtype_name, createdat) VALUES ('habit', datetime('now'))",
+  ).run();
   console.log('Added habit cardtype if not exists');
 } catch (error) {
   console.log('Habit cardtype creation error:', error);
