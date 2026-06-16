@@ -9,9 +9,23 @@
  * `./src/main.js` using webpack. This gives us some performance wins.
  */
 import path from 'path';
-import { app, BrowserWindow, ipcMain } from 'electron';
+import fs from 'fs';
+import { app, BrowserWindow, dialog, ipcMain, shell } from 'electron';
 import log from 'electron-log';
 import db from './initdb';
+import {
+  loadSettings,
+  saveSettings,
+  setDatabasePath,
+  getDatabasePath,
+  getRecentDbPaths,
+  removeFromRecentDbPaths,
+} from './settings';
+import {
+  getLocalDatabaseDir,
+  resolveSafeLocalDatabaseDeletion,
+  validateDatabasePathForChange,
+} from './databaseSafety';
 import {
   HabitExpansionInput,
   HabitProperties,
@@ -2073,12 +2087,6 @@ ipcMain.handle('get-project-cards', async (event, projectId: string) => {
 // 설정 관리 기능
 // =========================
 
-import { dialog } from 'electron';
-import { loadSettings, saveSettings, setDatabasePath, getDatabasePath, getRecentDbPaths, removeFromRecentDbPaths } from './settings';
-import { shell } from 'electron';
-import path from 'path';
-import fs from 'fs';
-
 // 현재 설정 가져오기
 ipcMain.handle('get-settings', async () => {
   try {
@@ -2107,13 +2115,12 @@ ipcMain.handle('save-settings', async (_, newSettings: Partial<import('./setting
 ipcMain.handle('select-database-path', async () => {
   try {
     const result = await dialog.showOpenDialog({
-      title: '기존 DB 파일 선택 또는 새 위치 지정',
+      title: '기존 DB 파일 선택',
       defaultPath: app.getPath('documents'),
       filters: [
-        { name: 'Database Files', extensions: ['db'] },
-        { name: 'All Files', extensions: ['*'] }
+        { name: 'Database Files', extensions: ['db'] }
       ],
-      properties: ['openFile', 'createDirectory']
+      properties: ['openFile']
     });
 
     if (!result.canceled && result.filePaths && result.filePaths.length > 0) {
@@ -2134,8 +2141,7 @@ ipcMain.handle('create-new-database-path', async () => {
       title: '새 DB 파일 생성',
       defaultPath: 'database.db',
       filters: [
-        { name: 'Database Files', extensions: ['db'] },
-        { name: 'All Files', extensions: ['*'] }
+        { name: 'Database Files', extensions: ['db'] }
       ]
     });
 
@@ -2151,9 +2157,14 @@ ipcMain.handle('create-new-database-path', async () => {
 });
 
 // DB 경로 변경 및 앱 재시작
-ipcMain.handle('change-database-path', async (event, newPath: string) => {
+ipcMain.handle('change-database-path', async (event, newPath: string, mode: 'open' | 'create' = 'open') => {
   try {
-    const success = setDatabasePath(newPath);
+    const validation = validateDatabasePathForChange(newPath, mode);
+    if (!validation.valid || !validation.path) {
+      return { success: false, error: validation.error || 'Invalid database path' };
+    }
+
+    const success = setDatabasePath(validation.path);
     if (success) {
       // DB 경로 변경 후 앱 재시작이 필요함을 알림
       return {
@@ -2201,7 +2212,7 @@ ipcMain.handle('remove-recent-db-path', async (event, dbPath: string) => {
 // 로컬 DB 목록 가져오기
 ipcMain.handle('get-local-databases', async () => {
   try {
-    const localDbDir = path.join(app.getPath('userData'), 'local-databases');
+    const localDbDir = getLocalDatabaseDir(app.getPath('userData'));
 
     if (!fs.existsSync(localDbDir)) {
       fs.mkdirSync(localDbDir, { recursive: true });
@@ -2236,12 +2247,21 @@ ipcMain.handle('get-local-databases', async () => {
 // 로컬 DB 삭제
 ipcMain.handle('delete-local-database', async (event, dbPath: string) => {
   try {
-    if (fs.existsSync(dbPath)) {
-      fs.unlinkSync(dbPath);
-      return { success: true };
-    } else {
-      return { success: false, error: 'File not found' };
+    const validation = resolveSafeLocalDatabaseDeletion(
+      dbPath,
+      getDatabasePath(),
+      getLocalDatabaseDir(app.getPath('userData')),
+    );
+
+    if (!validation.valid || !validation.resolvedPath) {
+      return { success: false, error: validation.error || 'Invalid database path' };
     }
+
+    await shell.trashItem(validation.resolvedPath);
+    removeFromRecentDbPaths(validation.path || dbPath);
+    removeFromRecentDbPaths(dbPath);
+
+    return { success: true };
   } catch (error) {
     log.error('Failed to delete local database:', error);
     return { success: false, error: 'Failed to delete local database' };

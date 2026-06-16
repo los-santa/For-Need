@@ -683,7 +683,7 @@ function DatabaseSettings() {
       const result = await window.electron.ipcRenderer.invoke('create-new-database-path');
 
       if (result.success && result.path) {
-        const changeResult = await window.electron.ipcRenderer.invoke('change-database-path', result.path);
+        const changeResult = await window.electron.ipcRenderer.invoke('change-database-path', result.path, 'create');
 
         if (changeResult.success) {
           setMessage('새 DB 파일이 생성되었습니다. 앱을 재시작해주세요.');
