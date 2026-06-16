@@ -1,11 +1,29 @@
 import Database from 'better-sqlite3';
-import { app } from 'electron';
 import path from 'path';
 import fs from 'fs';
-import { getDatabasePath } from './settings';
+import {
+  getDatabasePath,
+  getDefaultDatabasePath,
+  loadSettings,
+  saveSettings,
+} from './settings';
+import { validateDatabasePathForStartup } from './databaseSafety';
 
 // 설정에서 DB 경로 가져오기
-const dbPath = getDatabasePath();
+const configuredDbPath = getDatabasePath();
+const startupValidation = validateDatabasePathForStartup(configuredDbPath);
+const dbPath = startupValidation.valid && startupValidation.path
+  ? startupValidation.path
+  : getDefaultDatabasePath();
+
+if (!startupValidation.valid) {
+  console.error(
+    `Configured database path is invalid and was reset to the default path: ${startupValidation.error}`,
+  );
+  const settings = loadSettings();
+  saveSettings({ ...settings, dbPath });
+}
+
 const dbDir = path.dirname(dbPath);
 
 // 디렉토리 존재 확인 및 생성

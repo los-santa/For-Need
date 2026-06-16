@@ -54,6 +54,11 @@ export function saveSettings(settings: AppSettings): void {
   }
 }
 
+// 기본 DB 경로 가져오기
+export function getDefaultDatabasePath(): string {
+  return defaultSettings.dbPath!;
+}
+
 // DB 경로 변경
 export function setDatabasePath(newPath: string): boolean {
   try {
