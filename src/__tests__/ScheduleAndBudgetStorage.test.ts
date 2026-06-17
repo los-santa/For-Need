@@ -1,4 +1,4 @@
-import { loadState, saveState } from '../renderer/ScheduleAndBudget';
+import { loadState, saveState } from '../renderer/scheduleBudgetStorage';
 
 describe('ScheduleAndBudget localStorage helpers', () => {
   beforeEach(() => {
