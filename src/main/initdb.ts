@@ -172,9 +172,9 @@ try {
   const todoCardType = db.prepare("SELECT cardtype_id FROM CARDTYPES WHERE cardtype_name = 'todo'").get() as any;
 
   if (todoCardType) {
-    // 카드타입이 NULL이거나 다른 카드타입인 모든 카드를 'todo'로 업데이트
-    const updateResult = db.prepare("UPDATE CARDS SET cardtype = ? WHERE cardtype IS NULL OR cardtype != ?")
-      .run(todoCardType.cardtype_id, todoCardType.cardtype_id);
+    // 타입이 아직 없는 기존 카드만 기본 타입으로 보정한다.
+    const updateResult = db.prepare("UPDATE CARDS SET cardtype = ? WHERE cardtype IS NULL")
+      .run(todoCardType.cardtype_id);
 
     if (updateResult.changes > 0) {
       console.log(`Updated ${updateResult.changes} cards to 'todo' cardtype`);

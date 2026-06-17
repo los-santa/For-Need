@@ -265,8 +265,8 @@ ipcMain.handle('create-relation', async (_, data: RelationInput) => {
 
     const insert = db.prepare(`INSERT INTO RELATION (relationtype_id, source, target, project_id, createdat) VALUES (?, ?, ?, ?, ?)`);
 
-    // 중복 여부 확인 함수
-    const existsStmt = db.prepare(`SELECT 1 FROM RELATION WHERE relationtype_id = ? AND source = ? AND target = ?`);
+    // 중복 여부 확인 함수: 소프트 삭제된 관계는 재생성을 막으면 안 된다.
+    const existsStmt = db.prepare(`SELECT 1 FROM RELATION WHERE relationtype_id = ? AND source = ? AND target = ? AND deleted_at IS NULL`);
 
     const transact = db.transaction(() => {
       if (!existsStmt.get(data.relationtype_id, data.source, data.target)) {
@@ -2053,10 +2053,10 @@ ipcMain.handle('get-project-cards', async (event, projectId: string) => {
       SELECT
         c.*,
         ct.cardtype_name,
-        COUNT(r.id) as relation_count
+        COUNT(r.relation_id) as relation_count
       FROM CARDS c
       LEFT JOIN CARDTYPES ct ON c.cardtype = ct.cardtype_id
-      LEFT JOIN RELATIONS r ON (c.id = r.source_card OR c.id = r.target_card) AND r.deleted_at IS NULL
+      LEFT JOIN RELATION r ON (c.id = r.source OR c.id = r.target) AND r.deleted_at IS NULL
       WHERE c.project_id = ? AND c.deleted_at IS NULL
       GROUP BY c.id
       ORDER BY c.createdat DESC
@@ -2236,8 +2236,16 @@ ipcMain.handle('get-local-databases', async () => {
 // 로컬 DB 삭제
 ipcMain.handle('delete-local-database', async (event, dbPath: string) => {
   try {
-    if (fs.existsSync(dbPath)) {
-      fs.unlinkSync(dbPath);
+    const localDbDir = path.resolve(app.getPath('userData'), 'local-databases');
+    const resolvedDbPath = path.resolve(dbPath);
+    const isLocalDbPath = resolvedDbPath.startsWith(`${localDbDir}${path.sep}`);
+
+    if (!isLocalDbPath || path.extname(resolvedDbPath) !== '.db') {
+      return { success: false, error: 'Invalid local database path' };
+    }
+
+    if (fs.existsSync(resolvedDbPath)) {
+      fs.unlinkSync(resolvedDbPath);
       return { success: true };
     } else {
       return { success: false, error: 'File not found' };
