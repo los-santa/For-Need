@@ -8,6 +8,9 @@ import {
 
 type Language = "ko" | "en";
 
+const isLanguage = (value: string | null): value is Language =>
+  value === "ko" || value === "en";
+
 interface LanguageContextType {
   language: Language;
   setLanguage: (lang: Language) => void;
@@ -260,7 +263,7 @@ export function LanguageProvider({
 }) {
   const [language, setLanguage] = useState<Language>(() => {
     const saved = localStorage.getItem("language");
-    return (saved as Language) || "ko";
+    return isLanguage(saved) ? saved : "ko";
   });
 
   useEffect(() => {
@@ -268,8 +271,9 @@ export function LanguageProvider({
   }, [language]);
 
   const t = (key: string): string => {
+    const dictionary = translations[language] || translations.ko;
     return (
-      translations[language][
+      dictionary[
         key as keyof typeof translations.ko
       ] || key
     );

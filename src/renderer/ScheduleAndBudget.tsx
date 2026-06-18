@@ -191,12 +191,6 @@ function ScheduleAndBudgetContent() {
   };
 
   const handleDeleteDebt = (id: string) => {
-    const debtToRepay = debts.find(debt => debt.id === id);
-    if (debtToRepay) {
-      const newCashAmount = cashAmount - debtToRepay.amount;
-      setCashAmount(newCashAmount);
-      addCashTransaction('expense', debtToRepay.amount, `Debt cleared: ${debtToRepay.name}`, newCashAmount);
-    }
     setDebts(prevDebts => prevDebts.filter(debt => debt.id !== id));
   };
 
@@ -212,7 +206,13 @@ function ScheduleAndBudgetContent() {
   };
 
   const handleDeleteLoan = (id: string) => {
-    setLoans(loans.filter(loan => loan.id !== id));
+    const loanToDelete = loans.find(loan => loan.id === id);
+    if (loanToDelete) {
+      const newCashAmount = cashAmount + loanToDelete.amount;
+      setCashAmount(newCashAmount);
+      addCashTransaction('income', loanToDelete.amount, `Loan deleted: ${loanToDelete.name}`, newCashAmount);
+    }
+    setLoans(prevLoans => prevLoans.filter(loan => loan.id !== id));
   };
 
   const handleRepayLoan = (id: string) => {

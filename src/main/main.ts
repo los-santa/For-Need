@@ -2236,12 +2236,29 @@ ipcMain.handle('get-local-databases', async () => {
 // 로컬 DB 삭제
 ipcMain.handle('delete-local-database', async (event, dbPath: string) => {
   try {
-    if (fs.existsSync(dbPath)) {
-      fs.unlinkSync(dbPath);
-      return { success: true };
-    } else {
+    if (!dbPath || path.extname(dbPath).toLowerCase() !== '.db') {
+      return { success: false, error: 'Invalid database path' };
+    }
+
+    const localDbDir = path.join(app.getPath('userData'), 'local-databases');
+    if (!fs.existsSync(localDbDir) || !fs.existsSync(dbPath)) {
       return { success: false, error: 'File not found' };
     }
+
+    const localDbDirRealPath = fs.realpathSync(localDbDir);
+    const targetRealPath = fs.realpathSync(dbPath);
+    const relativePath = path.relative(localDbDirRealPath, targetRealPath);
+    if (relativePath.startsWith('..') || path.isAbsolute(relativePath)) {
+      return { success: false, error: 'Invalid database path' };
+    }
+
+    const activeDbPath = getDatabasePath();
+    if (fs.existsSync(activeDbPath) && fs.realpathSync(activeDbPath) === targetRealPath) {
+      return { success: false, error: 'Cannot delete active database' };
+    }
+
+    fs.unlinkSync(targetRealPath);
+    return { success: true };
   } catch (error) {
     log.error('Failed to delete local database:', error);
     return { success: false, error: 'Failed to delete local database' };
