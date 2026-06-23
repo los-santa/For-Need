@@ -29,6 +29,7 @@ import {
 import { v4 as uuidv4 } from 'uuid';
 import { randomUUID } from 'crypto';
 import { resolveHtmlPath } from './util';
+import { getProjectCardsByProjectId } from './cardDb';
 
 // 세션 관리
 let currentSessionId = uuidv4();
@@ -2047,20 +2048,9 @@ ipcMain.handle('delete-project', async (event, projectId: string) => {
 });
 
 // 특정 프로젝트의 카드들 조회
-ipcMain.handle('get-project-cards', async (event, projectId: string) => {
+ipcMain.handle('get-project-cards', async (_event, projectId: string) => {
   try {
-    const cards = db.prepare(`
-      SELECT
-        c.*,
-        ct.cardtype_name,
-        COUNT(r.id) as relation_count
-      FROM CARDS c
-      LEFT JOIN CARDTYPES ct ON c.cardtype = ct.cardtype_id
-      LEFT JOIN RELATIONS r ON (c.id = r.source_card OR c.id = r.target_card) AND r.deleted_at IS NULL
-      WHERE c.project_id = ? AND c.deleted_at IS NULL
-      GROUP BY c.id
-      ORDER BY c.createdat DESC
-    `).all(projectId);
+    const cards = getProjectCardsByProjectId(db, projectId);
 
     return { success: true, data: cards };
   } catch (error) {
