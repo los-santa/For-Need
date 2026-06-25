@@ -266,12 +266,45 @@ ipcMain.handle('create-relation', async (_, data: RelationInput) => {
     const insert = db.prepare(`INSERT INTO RELATION (relationtype_id, source, target, project_id, createdat) VALUES (?, ?, ?, ?, ?)`);
 
     // 중복 여부 확인 함수
-    const existsStmt = db.prepare(`SELECT 1 FROM RELATION WHERE relationtype_id = ? AND source = ? AND target = ?`);
+    const activeExistsStmt = db.prepare(
+      `SELECT 1 FROM RELATION WHERE relationtype_id = ? AND source = ? AND target = ? AND deleted_at IS NULL`,
+    );
+    const deletedRelationStmt = db.prepare(
+      `SELECT relation_id FROM RELATION WHERE relationtype_id = ? AND source = ? AND target = ? AND deleted_at IS NOT NULL ORDER BY relation_id DESC LIMIT 1`,
+    );
+    const restoreRelationStmt = db.prepare(
+      `UPDATE RELATION SET project_id = ?, createdat = ?, deleted_at = NULL WHERE relation_id = ?`,
+    );
+
+    const ensureRelation = (
+      relationtypeId: number,
+      source: string,
+      target: string,
+    ) => {
+      if (activeExistsStmt.get(relationtypeId, source, target)) {
+        return;
+      }
+
+      const deletedRelation = deletedRelationStmt.get(
+        relationtypeId,
+        source,
+        target,
+      ) as { relation_id: number } | undefined;
+
+      if (deletedRelation) {
+        restoreRelationStmt.run(
+          data.project_id ?? '',
+          now,
+          deletedRelation.relation_id,
+        );
+        return;
+      }
+
+      insert.run(relationtypeId, source, target, data.project_id ?? '', now);
+    };
 
     const transact = db.transaction(() => {
-      if (!existsStmt.get(data.relationtype_id, data.source, data.target)) {
-        insert.run(data.relationtype_id, data.source, data.target, data.project_id ?? '', now);
-      }
+      ensureRelation(data.relationtype_id, data.source, data.target);
 
       // 반대 relationtype_id 찾기
       const rtRow = db.prepare('SELECT oppsite FROM RELATIONTYPE WHERE relationtype_id = ?').get(data.relationtype_id) as any;
@@ -280,9 +313,7 @@ ipcMain.handle('create-relation', async (_, data: RelationInput) => {
         const oppRow = db.prepare('SELECT relationtype_id FROM RELATIONTYPE WHERE typename = ?').get(oppName) as any;
         if (oppRow) {
           const oppId = oppRow.relationtype_id;
-          if (!existsStmt.get(oppId, data.target, data.source)) {
-            insert.run(oppId, data.target, data.source, data.project_id ?? '', now);
-          }
+          ensureRelation(oppId, data.target, data.source);
         }
       }
     });
@@ -2053,10 +2084,10 @@ ipcMain.handle('get-project-cards', async (event, projectId: string) => {
       SELECT
         c.*,
         ct.cardtype_name,
-        COUNT(r.id) as relation_count
+        COUNT(r.relation_id) as relation_count
       FROM CARDS c
       LEFT JOIN CARDTYPES ct ON c.cardtype = ct.cardtype_id
-      LEFT JOIN RELATIONS r ON (c.id = r.source_card OR c.id = r.target_card) AND r.deleted_at IS NULL
+      LEFT JOIN RELATION r ON (c.id = r.source OR c.id = r.target) AND r.deleted_at IS NULL
       WHERE c.project_id = ? AND c.deleted_at IS NULL
       GROUP BY c.id
       ORDER BY c.createdat DESC
@@ -2075,6 +2106,7 @@ ipcMain.handle('get-project-cards', async (event, projectId: string) => {
 
 import { dialog } from 'electron';
 import { loadSettings, saveSettings, setDatabasePath, getDatabasePath, getRecentDbPaths, removeFromRecentDbPaths } from './settings';
+import { validateLocalDatabaseDeletionPath } from './localDatabasePaths';
 import { shell } from 'electron';
 import path from 'path';
 import fs from 'fs';
@@ -2236,8 +2268,24 @@ ipcMain.handle('get-local-databases', async () => {
 // 로컬 DB 삭제
 ipcMain.handle('delete-local-database', async (event, dbPath: string) => {
   try {
-    if (fs.existsSync(dbPath)) {
-      fs.unlinkSync(dbPath);
+    const localDbDir = path.join(app.getPath('userData'), 'local-databases');
+    const validation = validateLocalDatabaseDeletionPath(
+      dbPath,
+      localDbDir,
+      getDatabasePath(),
+    );
+
+    if (!validation.success) {
+      return { success: false, error: validation.error };
+    }
+
+    if (fs.existsSync(validation.resolvedPath)) {
+      const stats = fs.statSync(validation.resolvedPath);
+      if (!stats.isFile()) {
+        return { success: false, error: 'Path is not a file' };
+      }
+
+      fs.unlinkSync(validation.resolvedPath);
       return { success: true };
     } else {
       return { success: false, error: 'File not found' };
