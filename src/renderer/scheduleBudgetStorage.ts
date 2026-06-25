@@ -101,15 +101,25 @@ type SettingsResponse = {
   };
 };
 
+type ElectronSettingsBridge = {
+  electron?: {
+    ipcRenderer?: {
+      invoke?: (channel: string, ...args: unknown[]) => Promise<unknown>;
+    };
+  };
+};
+
 export const resolveScheduleBudgetDatabasePath = async (): Promise<string> => {
   try {
     if (typeof window === 'undefined') {
       return DEFAULT_DATABASE_NAMESPACE;
     }
 
-    const result = (await window.electron?.ipcRenderer.invoke(
-      'get-settings',
-    )) as SettingsResponse | undefined;
+    const invoke = (window as Window & ElectronSettingsBridge).electron
+      ?.ipcRenderer?.invoke;
+    const result = (await invoke?.('get-settings')) as
+      | SettingsResponse
+      | undefined;
 
     if (result?.success && typeof result.data?.dbPath === 'string') {
       return result.data.dbPath;
