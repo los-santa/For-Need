@@ -15,71 +15,84 @@ import { Button } from "./schedule-budget-components/ui/button";
 import { Separator } from "./schedule-budget-components/ui/separator";
 import { Wallet } from "lucide-react";
 import { LanguageProvider, useLanguage } from "./schedule-budget-contexts/LanguageContext";
-
-// Helper to load from localStorage
-const loadState = <T,>(key: string, defaultValue: T): T => {
-  const saved = localStorage.getItem(key);
-  if (!saved) return defaultValue;
-  try {
-    const parsed = JSON.parse(saved);
-    // Recursively convert date strings back to Date objects
-    const reviveDates = (obj: any): any => {
-      if (obj === null || obj === undefined) return obj;
-      if (typeof obj === 'string' && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}.\d{3}Z$/.test(obj)) {
-        return new Date(obj);
-      }
-      if (Array.isArray(obj)) {
-        return obj.map(reviveDates);
-      }
-      if (typeof obj === 'object') {
-        const newObj: any = {};
-        for (const key in obj) {
-          newObj[key] = reviveDates(obj[key]);
-        }
-        return newObj;
-      }
-      return obj;
-    };
-    return reviveDates(parsed);
-  } catch (e) {
-    console.error(`Error loading state ${key}`, e);
-    return defaultValue;
-  }
-};
-
-// Helper to save to localStorage
-const saveState = <T,>(key: string, value: T) => {
-  localStorage.setItem(key, JSON.stringify(value));
-};
+import {
+  loadScheduleBudgetState,
+  resolveScheduleBudgetDatabasePath,
+  saveScheduleBudgetState,
+} from "./scheduleBudgetStorage";
 
 function ScheduleAndBudgetContent() {
   const { t } = useLanguage();
 
-  // Initialize states from localStorage
-  const [cashAmount, setCashAmount] = useState<number>(() => loadState('cashAmount', 0));
-  const [items, setItems] = useState<Item[]>(() => loadState('items', []));
-  const [debts, setDebts] = useState<Debt[]>(() => loadState('debts', []));
-  const [loans, setLoans] = useState<Loan[]>(() => loadState('loans', []));
-  const [cashTransactions, setCashTransactions] = useState<CashTransaction[]>(() => loadState('cashTransactions', []));
-  const [budgets, setBudgets] = useState<Budget[]>(() => loadState('budgets', []));
-  const [expenses, setExpenses] = useState<Expense[]>(() => loadState('expenses', []));
-  const [schedules, setSchedules] = useState<Schedule[]>(() => loadState('schedules', []));
-  const [recurringExpenses, setRecurringExpenses] = useState<RecurringExpense[]>(() => loadState('recurringExpenses', []));
+  const [storageDatabasePath, setStorageDatabasePath] = useState<string | null>(null);
+  const [storageReady, setStorageReady] = useState(false);
+
+  const [cashAmount, setCashAmount] = useState<number>(0);
+  const [items, setItems] = useState<Item[]>([]);
+  const [debts, setDebts] = useState<Debt[]>([]);
+  const [loans, setLoans] = useState<Loan[]>([]);
+  const [cashTransactions, setCashTransactions] = useState<CashTransaction[]>([]);
+  const [budgets, setBudgets] = useState<Budget[]>([]);
+  const [expenses, setExpenses] = useState<Expense[]>([]);
+  const [schedules, setSchedules] = useState<Schedule[]>([]);
+  const [recurringExpenses, setRecurringExpenses] = useState<RecurringExpense[]>([]);
 
   const [isAssetModalOpen, setIsAssetModalOpen] = useState(false);
   const [isBudgetModalOpen, setIsBudgetModalOpen] = useState(false);
   const [isHistoryModalOpen, setIsHistoryModalOpen] = useState(false);
 
-  // Sync states to localStorage
-  useEffect(() => { saveState('cashAmount', cashAmount); }, [cashAmount]);
-  useEffect(() => { saveState('items', items); }, [items]);
-  useEffect(() => { saveState('debts', debts); }, [debts]);
-  useEffect(() => { saveState('loans', loans); }, [loans]);
-  useEffect(() => { saveState('cashTransactions', cashTransactions); }, [cashTransactions]);
-  useEffect(() => { saveState('budgets', budgets); }, [budgets]);
-  useEffect(() => { saveState('expenses', expenses); }, [expenses]);
-  useEffect(() => { saveState('schedules', schedules); }, [schedules]);
-  useEffect(() => { saveState('recurringExpenses', recurringExpenses); }, [recurringExpenses]);
+  useEffect(() => {
+    let mounted = true;
+
+    resolveScheduleBudgetDatabasePath().then((databasePath) => {
+      if (!mounted) return;
+
+      setCashAmount(loadScheduleBudgetState(localStorage, databasePath, 'cashAmount', 0));
+      setItems(loadScheduleBudgetState(localStorage, databasePath, 'items', []));
+      setDebts(loadScheduleBudgetState(localStorage, databasePath, 'debts', []));
+      setLoans(loadScheduleBudgetState(localStorage, databasePath, 'loans', []));
+      setCashTransactions(loadScheduleBudgetState(localStorage, databasePath, 'cashTransactions', []));
+      setBudgets(loadScheduleBudgetState(localStorage, databasePath, 'budgets', []));
+      setExpenses(loadScheduleBudgetState(localStorage, databasePath, 'expenses', []));
+      setSchedules(loadScheduleBudgetState(localStorage, databasePath, 'schedules', []));
+      setRecurringExpenses(loadScheduleBudgetState(localStorage, databasePath, 'recurringExpenses', []));
+      setStorageDatabasePath(databasePath);
+      setStorageReady(true);
+    });
+
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  // Sync states to the active database namespace after initial load completes.
+  useEffect(() => {
+    if (storageReady && storageDatabasePath) saveScheduleBudgetState(localStorage, storageDatabasePath, 'cashAmount', cashAmount);
+  }, [cashAmount, storageDatabasePath, storageReady]);
+  useEffect(() => {
+    if (storageReady && storageDatabasePath) saveScheduleBudgetState(localStorage, storageDatabasePath, 'items', items);
+  }, [items, storageDatabasePath, storageReady]);
+  useEffect(() => {
+    if (storageReady && storageDatabasePath) saveScheduleBudgetState(localStorage, storageDatabasePath, 'debts', debts);
+  }, [debts, storageDatabasePath, storageReady]);
+  useEffect(() => {
+    if (storageReady && storageDatabasePath) saveScheduleBudgetState(localStorage, storageDatabasePath, 'loans', loans);
+  }, [loans, storageDatabasePath, storageReady]);
+  useEffect(() => {
+    if (storageReady && storageDatabasePath) saveScheduleBudgetState(localStorage, storageDatabasePath, 'cashTransactions', cashTransactions);
+  }, [cashTransactions, storageDatabasePath, storageReady]);
+  useEffect(() => {
+    if (storageReady && storageDatabasePath) saveScheduleBudgetState(localStorage, storageDatabasePath, 'budgets', budgets);
+  }, [budgets, storageDatabasePath, storageReady]);
+  useEffect(() => {
+    if (storageReady && storageDatabasePath) saveScheduleBudgetState(localStorage, storageDatabasePath, 'expenses', expenses);
+  }, [expenses, storageDatabasePath, storageReady]);
+  useEffect(() => {
+    if (storageReady && storageDatabasePath) saveScheduleBudgetState(localStorage, storageDatabasePath, 'schedules', schedules);
+  }, [schedules, storageDatabasePath, storageReady]);
+  useEffect(() => {
+    if (storageReady && storageDatabasePath) saveScheduleBudgetState(localStorage, storageDatabasePath, 'recurringExpenses', recurringExpenses);
+  }, [recurringExpenses, storageDatabasePath, storageReady]);
 
   // Calculate current wealth (Cash + Loans - Debts)
   const currentWealth = useMemo(() => {
