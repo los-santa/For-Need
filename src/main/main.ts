@@ -11,7 +11,8 @@
 import path from 'path';
 import { app, BrowserWindow, ipcMain } from 'electron';
 import log from 'electron-log';
-import db from './initdb';
+import db, { activeDatabasePath } from './initdb';
+import { checkLocalDatabaseDeletion } from './databaseSafety';
 import {
   HabitExpansionInput,
   HabitProperties,
@@ -2053,10 +2054,10 @@ ipcMain.handle('get-project-cards', async (event, projectId: string) => {
       SELECT
         c.*,
         ct.cardtype_name,
-        COUNT(r.id) as relation_count
+        COUNT(DISTINCT r.relation_id) as relation_count
       FROM CARDS c
       LEFT JOIN CARDTYPES ct ON c.cardtype = ct.cardtype_id
-      LEFT JOIN RELATIONS r ON (c.id = r.source_card OR c.id = r.target_card) AND r.deleted_at IS NULL
+      LEFT JOIN RELATION r ON (c.id = r.source OR c.id = r.target) AND r.deleted_at IS NULL
       WHERE c.project_id = ? AND c.deleted_at IS NULL
       GROUP BY c.id
       ORDER BY c.createdat DESC
@@ -2236,8 +2237,19 @@ ipcMain.handle('get-local-databases', async () => {
 // 로컬 DB 삭제
 ipcMain.handle('delete-local-database', async (event, dbPath: string) => {
   try {
-    if (fs.existsSync(dbPath)) {
-      fs.unlinkSync(dbPath);
+    const deleteCheck = checkLocalDatabaseDeletion({
+      dbPath,
+      localDbDir: path.join(app.getPath('userData'), 'local-databases'),
+      activeDbPath: activeDatabasePath,
+      configuredDbPath: getDatabasePath(),
+    });
+
+    if (!deleteCheck.allowed) {
+      return { success: false, error: deleteCheck.error };
+    }
+
+    if (fs.existsSync(deleteCheck.resolvedDbPath)) {
+      fs.unlinkSync(deleteCheck.resolvedDbPath);
       return { success: true };
     } else {
       return { success: false, error: 'File not found' };

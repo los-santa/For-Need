@@ -17,7 +17,9 @@ console.log('Database path:', dbPath);
 console.log('Database dir:', dbDir);
 console.log('Directory exists:', fs.existsSync(dbDir));
 
-const db = new Database(dbPath);
+export const activeDatabasePath = dbPath;
+
+const db = new Database(activeDatabasePath);
 
 // 기존 데이터 유지를 위해 DROP 문 제거 - 테이블이 없을 때만 생성
 
@@ -164,17 +166,16 @@ db.exec(`
   )
 `);
 
-// 기존 카드들을 'todo' 카드타입으로 마이그레이션
+// 카드타입이 없던 과거 카드만 'todo' 카드타입으로 마이그레이션
 try {
-  console.log('Migrating existing cards to todo cardtype...');
+  console.log('Migrating cards without cardtype to todo cardtype...');
 
   // 'todo' 카드타입 ID 가져오기
   const todoCardType = db.prepare("SELECT cardtype_id FROM CARDTYPES WHERE cardtype_name = 'todo'").get() as any;
 
   if (todoCardType) {
-    // 카드타입이 NULL이거나 다른 카드타입인 모든 카드를 'todo'로 업데이트
-    const updateResult = db.prepare("UPDATE CARDS SET cardtype = ? WHERE cardtype IS NULL OR cardtype != ?")
-      .run(todoCardType.cardtype_id, todoCardType.cardtype_id);
+    const updateResult = db.prepare("UPDATE CARDS SET cardtype = ? WHERE cardtype IS NULL")
+      .run(todoCardType.cardtype_id);
 
     if (updateResult.changes > 0) {
       console.log(`Updated ${updateResult.changes} cards to 'todo' cardtype`);
