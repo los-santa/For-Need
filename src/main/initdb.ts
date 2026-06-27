@@ -3,6 +3,7 @@ import { app } from 'electron';
 import path from 'path';
 import fs from 'fs';
 import { getDatabasePath } from './settings';
+import { assignDefaultCardTypeToUntypedCards } from './cardTypeMigration';
 
 // 설정에서 DB 경로 가져오기
 const dbPath = getDatabasePath();
@@ -166,19 +167,12 @@ db.exec(`
 
 // 기존 카드들을 'todo' 카드타입으로 마이그레이션
 try {
-  console.log('Migrating existing cards to todo cardtype...');
+  console.log('Migrating untyped existing cards to todo cardtype...');
 
-  // 'todo' 카드타입 ID 가져오기
-  const todoCardType = db.prepare("SELECT cardtype_id FROM CARDTYPES WHERE cardtype_name = 'todo'").get() as any;
+  const changedCards = assignDefaultCardTypeToUntypedCards(db);
 
-  if (todoCardType) {
-    // 카드타입이 NULL이거나 다른 카드타입인 모든 카드를 'todo'로 업데이트
-    const updateResult = db.prepare("UPDATE CARDS SET cardtype = ? WHERE cardtype IS NULL OR cardtype != ?")
-      .run(todoCardType.cardtype_id, todoCardType.cardtype_id);
-
-    if (updateResult.changes > 0) {
-      console.log(`Updated ${updateResult.changes} cards to 'todo' cardtype`);
-    }
+  if (changedCards > 0) {
+    console.log(`Updated ${changedCards} untyped cards to 'todo' cardtype`);
   }
 } catch (error) {
   console.log('Card migration error:', error);
