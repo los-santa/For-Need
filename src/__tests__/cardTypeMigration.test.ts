@@ -2,7 +2,7 @@ import { migrateMissingCardTypesToTodo } from '../main/cardTypeMigration';
 
 describe('migrateMissingCardTypesToTodo', () => {
   it('only migrates cards with missing cardtype to todo', () => {
-    const cards = [
+    const cards: Array<{ id: string; cardtype: number | null }> = [
       { id: 'missing-type', cardtype: null },
       { id: 'todo-card', cardtype: 2 },
       { id: 'habit-card', cardtype: 4 },

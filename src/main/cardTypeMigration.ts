@@ -1,6 +1,6 @@
 type MigrationStatement = {
   get?: () => unknown;
-  run?: (...args: unknown[]) => { changes?: number };
+  run?: (...args: any[]) => { changes?: number };
 };
 
 type MigrationDatabase = {
