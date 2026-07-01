@@ -2079,6 +2079,32 @@ import { shell } from 'electron';
 import path from 'path';
 import fs from 'fs';
 
+const getLocalDatabaseDir = () => path.join(app.getPath('userData'), 'local-databases');
+
+const isPathInsideDirectory = (candidatePath: string, directoryPath: string) => {
+  const relativePath = path.relative(
+    path.resolve(directoryPath),
+    path.resolve(candidatePath),
+  );
+
+  return (
+    relativePath !== '' &&
+    !relativePath.startsWith('..') &&
+    !path.isAbsolute(relativePath)
+  );
+};
+
+const isDeletableLocalDatabasePath = (dbPath: string) => {
+  const resolvedDbPath = path.resolve(dbPath);
+  const localDbDir = getLocalDatabaseDir();
+
+  return (
+    path.extname(resolvedDbPath).toLowerCase() === '.db' &&
+    isPathInsideDirectory(resolvedDbPath, localDbDir) &&
+    resolvedDbPath !== path.resolve(getDatabasePath())
+  );
+};
+
 // 현재 설정 가져오기
 ipcMain.handle('get-settings', async () => {
   try {
@@ -2201,7 +2227,7 @@ ipcMain.handle('remove-recent-db-path', async (event, dbPath: string) => {
 // 로컬 DB 목록 가져오기
 ipcMain.handle('get-local-databases', async () => {
   try {
-    const localDbDir = path.join(app.getPath('userData'), 'local-databases');
+    const localDbDir = getLocalDatabaseDir();
 
     if (!fs.existsSync(localDbDir)) {
       fs.mkdirSync(localDbDir, { recursive: true });
@@ -2236,6 +2262,10 @@ ipcMain.handle('get-local-databases', async () => {
 // 로컬 DB 삭제
 ipcMain.handle('delete-local-database', async (event, dbPath: string) => {
   try {
+    if (!isDeletableLocalDatabasePath(dbPath)) {
+      return { success: false, error: 'Invalid local database path' };
+    }
+
     if (fs.existsSync(dbPath)) {
       fs.unlinkSync(dbPath);
       return { success: true };
