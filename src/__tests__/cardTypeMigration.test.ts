@@ -2,7 +2,7 @@ import { migrateMissingCardTypesToTodo } from '../main/cardTypeMigration';
 
 describe('migrateMissingCardTypesToTodo', () => {
   it('backfills only cards with a missing cardtype', () => {
-    const cards = [
+    const cards: Array<{ id: string; cardtype: number | null }> = [
       { id: 'legacy-null', cardtype: null },
       { id: 'no-type-yet', cardtype: 1 },
       { id: 'todo', cardtype: 2 },
