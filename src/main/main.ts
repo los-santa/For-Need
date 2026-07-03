@@ -2075,6 +2075,7 @@ ipcMain.handle('get-project-cards', async (event, projectId: string) => {
 
 import { dialog } from 'electron';
 import { loadSettings, saveSettings, setDatabasePath, getDatabasePath, getRecentDbPaths, removeFromRecentDbPaths } from './settings';
+import { deleteLocalDatabaseFile } from './localDatabaseSafety';
 import { shell } from 'electron';
 import path from 'path';
 import fs from 'fs';
@@ -2236,12 +2237,8 @@ ipcMain.handle('get-local-databases', async () => {
 // 로컬 DB 삭제
 ipcMain.handle('delete-local-database', async (event, dbPath: string) => {
   try {
-    if (fs.existsSync(dbPath)) {
-      fs.unlinkSync(dbPath);
-      return { success: true };
-    } else {
-      return { success: false, error: 'File not found' };
-    }
+    const localDbDir = path.join(app.getPath('userData'), 'local-databases');
+    return deleteLocalDatabaseFile(dbPath, localDbDir, getDatabasePath());
   } catch (error) {
     log.error('Failed to delete local database:', error);
     return { success: false, error: 'Failed to delete local database' };
