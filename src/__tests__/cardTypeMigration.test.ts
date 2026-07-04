@@ -27,7 +27,8 @@ function createFakeDb(todoCardTypeId: number | undefined, cards: FakeCard[]) {
         if (sql.includes('UPDATE CARDS SET cardtype = ? WHERE cardtype IS NULL')) {
           return {
             get: () => undefined,
-            run: (cardtypeId: number) => {
+            run: (...params: unknown[]) => {
+              const [cardtypeId] = params as [number];
               let changes = 0;
               cards.forEach((card) => {
                 if (card.cardtype === null) {
