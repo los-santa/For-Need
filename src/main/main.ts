@@ -29,6 +29,7 @@ import {
 import { v4 as uuidv4 } from 'uuid';
 import { randomUUID } from 'crypto';
 import { resolveHtmlPath } from './util';
+import { deleteLocalDatabaseFile } from './localDatabaseSafety';
 
 // 세션 관리
 let currentSessionId = uuidv4();
@@ -2053,10 +2054,10 @@ ipcMain.handle('get-project-cards', async (event, projectId: string) => {
       SELECT
         c.*,
         ct.cardtype_name,
-        COUNT(r.id) as relation_count
+        COUNT(r.relation_id) as relation_count
       FROM CARDS c
       LEFT JOIN CARDTYPES ct ON c.cardtype = ct.cardtype_id
-      LEFT JOIN RELATIONS r ON (c.id = r.source_card OR c.id = r.target_card) AND r.deleted_at IS NULL
+      LEFT JOIN RELATION r ON (c.id = r.source OR c.id = r.target) AND r.deleted_at IS NULL
       WHERE c.project_id = ? AND c.deleted_at IS NULL
       GROUP BY c.id
       ORDER BY c.createdat DESC
@@ -2236,12 +2237,8 @@ ipcMain.handle('get-local-databases', async () => {
 // 로컬 DB 삭제
 ipcMain.handle('delete-local-database', async (event, dbPath: string) => {
   try {
-    if (fs.existsSync(dbPath)) {
-      fs.unlinkSync(dbPath);
-      return { success: true };
-    } else {
-      return { success: false, error: 'File not found' };
-    }
+    const localDbDir = path.join(app.getPath('userData'), 'local-databases');
+    return deleteLocalDatabaseFile(dbPath, localDbDir, getDatabasePath());
   } catch (error) {
     log.error('Failed to delete local database:', error);
     return { success: false, error: 'Failed to delete local database' };
