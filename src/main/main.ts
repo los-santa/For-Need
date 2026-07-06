@@ -29,6 +29,7 @@ import {
 import { v4 as uuidv4 } from 'uuid';
 import { randomUUID } from 'crypto';
 import { resolveHtmlPath } from './util';
+import { deleteLocalDatabaseFile } from './localDatabaseSafety';
 
 // 세션 관리
 let currentSessionId = uuidv4();
@@ -2236,12 +2237,8 @@ ipcMain.handle('get-local-databases', async () => {
 // 로컬 DB 삭제
 ipcMain.handle('delete-local-database', async (event, dbPath: string) => {
   try {
-    if (fs.existsSync(dbPath)) {
-      fs.unlinkSync(dbPath);
-      return { success: true };
-    } else {
-      return { success: false, error: 'File not found' };
-    }
+    const localDbDir = path.join(app.getPath('userData'), 'local-databases');
+    return deleteLocalDatabaseFile(dbPath, localDbDir, getDatabasePath());
   } catch (error) {
     log.error('Failed to delete local database:', error);
     return { success: false, error: 'Failed to delete local database' };
