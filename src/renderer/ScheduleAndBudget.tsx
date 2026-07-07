@@ -15,6 +15,7 @@ import { Button } from "./schedule-budget-components/ui/button";
 import { Separator } from "./schedule-budget-components/ui/separator";
 import { Wallet } from "lucide-react";
 import { LanguageProvider, useLanguage } from "./schedule-budget-contexts/LanguageContext";
+import { deleteDebtById } from "./schedule-budget-logic";
 
 // Helper to load from localStorage
 const loadState = <T,>(key: string, defaultValue: T): T => {
@@ -191,13 +192,7 @@ function ScheduleAndBudgetContent() {
   };
 
   const handleDeleteDebt = (id: string) => {
-    const debtToRepay = debts.find(debt => debt.id === id);
-    if (debtToRepay) {
-      const newCashAmount = cashAmount - debtToRepay.amount;
-      setCashAmount(newCashAmount);
-      addCashTransaction('expense', debtToRepay.amount, `Debt cleared: ${debtToRepay.name}`, newCashAmount);
-    }
-    setDebts(prevDebts => prevDebts.filter(debt => debt.id !== id));
+    setDebts(prevDebts => deleteDebtById(prevDebts, id));
   };
 
   const handleAddLoan = (newLoan: Omit<Loan, 'id'>) => {

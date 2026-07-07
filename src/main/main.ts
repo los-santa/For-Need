@@ -2078,6 +2078,7 @@ import { loadSettings, saveSettings, setDatabasePath, getDatabasePath, getRecent
 import { shell } from 'electron';
 import path from 'path';
 import fs from 'fs';
+import { deleteLocalDatabaseFile } from './localDatabaseSafety';
 
 // 현재 설정 가져오기
 ipcMain.handle('get-settings', async () => {
@@ -2236,12 +2237,10 @@ ipcMain.handle('get-local-databases', async () => {
 // 로컬 DB 삭제
 ipcMain.handle('delete-local-database', async (event, dbPath: string) => {
   try {
-    if (fs.existsSync(dbPath)) {
-      fs.unlinkSync(dbPath);
-      return { success: true };
-    } else {
-      return { success: false, error: 'File not found' };
-    }
+    return deleteLocalDatabaseFile(dbPath, {
+      localDbDir: path.join(app.getPath('userData'), 'local-databases'),
+      activeDbPath: getDatabasePath(),
+    });
   } catch (error) {
     log.error('Failed to delete local database:', error);
     return { success: false, error: 'Failed to delete local database' };

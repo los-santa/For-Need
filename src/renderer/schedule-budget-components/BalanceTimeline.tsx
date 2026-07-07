@@ -12,6 +12,10 @@ import { RecurringExpense } from "./RecurringExpenseForm";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine } from "recharts";
 import { format, isBefore, isSameDay, startOfDay, addDays, addMonths, addYears, addWeeks } from "date-fns";
 import { useState, useMemo } from "react";
+import {
+  clampBalanceTimelinePointCount,
+  MAX_BALANCE_TIMELINE_POINT_COUNT,
+} from "../schedule-budget-logic";
 
 interface BalanceTimelineProps {
   currentWealth: number;
@@ -296,9 +300,9 @@ export function BalanceTimeline({ currentWealth, schedules, recurringExpenses }:
             <Input
               type="number"
               min="1"
-              max="1000"
+              max={MAX_BALANCE_TIMELINE_POINT_COUNT}
               value={pointCount}
-              onChange={(e) => setPointCount(Math.max(1, parseInt(e.target.value) || 1))}
+              onChange={(e) => setPointCount(clampBalanceTimelinePointCount(e.target.value))}
               className="w-24 bg-[#2A2A2A] border-white/30 text-white"
             />
             <Tabs value={interval} onValueChange={(value) => setInterval(value as Interval)} className="flex-1">
