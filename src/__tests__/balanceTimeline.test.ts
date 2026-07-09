@@ -1,5 +1,7 @@
-import { getRecurringExpensesAsSchedules } from '../renderer/schedule-budget-components/BalanceTimeline';
-import { RecurringExpense } from '../renderer/schedule-budget-components/RecurringExpenseForm';
+import {
+  getRecurringExpensesAsSchedules,
+  RecurringExpenseLike,
+} from '../renderer/scheduleBudgetRecurrence';
 
 describe('getRecurringExpensesAsSchedules', () => {
   it('skips recurring expenses with invalid frequencies instead of looping forever', () => {
@@ -9,7 +11,7 @@ describe('getRecurringExpensesAsSchedules', () => {
       amount: 100,
       startDate: new Date('2026-07-09T00:00:00.000Z'),
       frequency: 'biweekly',
-    } as unknown as RecurringExpense;
+    } as unknown as RecurringExpenseLike;
 
     const result = getRecurringExpensesAsSchedules(
       [invalidExpense],
@@ -27,7 +29,7 @@ describe('getRecurringExpensesAsSchedules', () => {
       amount: 100,
       startDate: '2026-07-09',
       frequency: 'daily',
-    } as unknown as RecurringExpense;
+    } as unknown as RecurringExpenseLike;
 
     const result = getRecurringExpensesAsSchedules(
       [invalidExpense],

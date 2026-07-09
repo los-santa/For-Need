@@ -12,6 +12,10 @@ import { RecurringExpense } from "./RecurringExpenseForm";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine } from "recharts";
 import { format, isBefore, isSameDay, startOfDay, addDays, addMonths, addYears, addWeeks } from "date-fns";
 import { useState, useMemo } from "react";
+import {
+  getRecurringExpensesAsSchedules,
+  isValidScheduleDate,
+} from "../scheduleBudgetRecurrence";
 
 interface BalanceTimelineProps {
   currentWealth: number;
@@ -28,64 +32,6 @@ interface BalancePoint {
 
 type Interval = "day" | "week" | "month" | "year";
 type YAxisDomain = [number, number] | [number, 'auto'];
-const recurringFrequencies = new Set(["daily", "weekly", "monthly", "yearly"]);
-
-function isValidDate(value: unknown): value is Date {
-  return value instanceof Date && !Number.isNaN(value.getTime());
-}
-
-export function getRecurringExpensesAsSchedules(
-  recurringExpenses: RecurringExpense[],
-  endDate: Date,
-  today: Date = new Date(),
-): Schedule[] {
-  const result: Schedule[] = [];
-  const todayStart = startOfDay(today);
-
-  recurringExpenses.forEach((expense) => {
-    if (
-      !isValidDate(expense.startDate) ||
-      (expense.endDate && !isValidDate(expense.endDate)) ||
-      !recurringFrequencies.has(expense.frequency)
-    ) {
-      return;
-    }
-
-    let currentDate = startOfDay(expense.startDate);
-    const finalDate = expense.endDate ? startOfDay(expense.endDate) : endDate;
-
-    while (currentDate <= finalDate && currentDate <= endDate) {
-      if (currentDate >= todayStart) {
-        result.push({
-          id: `recurring-${expense.id}-${currentDate.getTime()}`,
-          title: expense.title,
-          date: currentDate,
-          requiredAmount: expense.amount,
-          isIncome: expense.isIncome,
-        });
-      }
-
-      switch (expense.frequency) {
-        case "daily":
-          currentDate = addDays(currentDate, 1);
-          break;
-        case "weekly":
-          currentDate = addDays(currentDate, 7);
-          break;
-        case "monthly":
-          currentDate = addMonths(currentDate, 1);
-          break;
-        case "yearly":
-          currentDate = addYears(currentDate, 1);
-          break;
-        default:
-          return;
-      }
-    }
-  });
-
-  return result;
-}
 
 export function BalanceTimeline({ currentWealth, schedules, recurringExpenses }: BalanceTimelineProps) {
   const [selectedDate, setSelectedDate] = useState<Date>();
@@ -122,7 +68,7 @@ export function BalanceTimeline({ currentWealth, schedules, recurringExpenses }:
   const balancePoints = useMemo(() => {
     const endDate = getEndDate(interval, normalizedPointCount);
     const allSchedules = [
-      ...schedules.filter((schedule) => isValidDate(schedule.date)),
+      ...schedules.filter((schedule) => isValidScheduleDate(schedule.date)),
       ...getRecurringExpensesAsSchedules(recurringExpenses, endDate),
     ];
 
@@ -261,7 +207,7 @@ export function BalanceTimeline({ currentWealth, schedules, recurringExpenses }:
     const targetDate = startOfDay(date);
     const endDate = getEndDate(interval, normalizedPointCount);
     const allSchedules = [
-      ...schedules.filter((schedule) => isValidDate(schedule.date)),
+      ...schedules.filter((schedule) => isValidScheduleDate(schedule.date)),
       ...getRecurringExpensesAsSchedules(recurringExpenses, endDate),
     ];
     
