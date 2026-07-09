@@ -11,7 +11,7 @@ describe('migrateMissingCardTypesToTodo', () => {
       return { get: jest.fn(), run };
     });
 
-    const changes = migrateMissingCardTypesToTodo({ prepare });
+    const changes = migrateMissingCardTypesToTodo({ prepare: prepare as any });
 
     expect(changes).toBe(2);
     expect(prepare).toHaveBeenCalledWith(
@@ -24,7 +24,7 @@ describe('migrateMissingCardTypesToTodo', () => {
     const run = jest.fn();
     const prepare = jest.fn(() => ({ get: () => undefined, run }));
 
-    const changes = migrateMissingCardTypesToTodo({ prepare });
+    const changes = migrateMissingCardTypesToTodo({ prepare: prepare as any });
 
     expect(changes).toBe(0);
     expect(run).not.toHaveBeenCalled();

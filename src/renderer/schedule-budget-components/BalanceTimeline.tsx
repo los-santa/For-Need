@@ -27,6 +27,7 @@ interface BalancePoint {
 }
 
 type Interval = "day" | "week" | "month" | "year";
+type YAxisDomain = [number, number] | [number, 'auto'];
 const recurringFrequencies = new Set(["daily", "weekly", "monthly", "yearly"]);
 
 function isValidDate(value: unknown): value is Date {
@@ -237,7 +238,7 @@ export function BalanceTimeline({ currentWealth, schedules, recurringExpenses }:
 
   // Calculate Y-axis range
   const yAxisDomain = useMemo(() => {
-    if (chartData.length === 0) return [0, 'auto'];
+    if (chartData.length === 0) return [0, 'auto'] as YAxisDomain;
     
     const balances = chartData.map(d => d.Balance);
     const minBalance = Math.min(...balances);
@@ -250,7 +251,7 @@ export function BalanceTimeline({ currentWealth, schedules, recurringExpenses }:
     return [
       Math.floor((minBalance - padding) / 10000) * 10000,
       Math.ceil((maxBalance + padding) / 10000) * 10000
-    ];
+    ] as YAxisDomain;
   }, [chartData]);
 
   // Calculate balance at selected date
@@ -363,7 +364,7 @@ export function BalanceTimeline({ currentWealth, schedules, recurringExpenses }:
                   }}
                 />
                 <Tooltip 
-                  formatter={(value: number) => [`₩${formatCurrency(value)}`, 'Balance']}
+                  formatter={(value?: number) => [`₩${formatCurrency(value ?? 0)}`, 'Balance']}
                   labelFormatter={(label, payload) => {
                     if (payload && payload.length > 0) {
                       return payload[0].payload.fullDate;
