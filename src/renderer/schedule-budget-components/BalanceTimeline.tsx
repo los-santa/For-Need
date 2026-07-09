@@ -12,6 +12,10 @@ import { RecurringExpense } from "./RecurringExpenseForm";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine } from "recharts";
 import { format, isBefore, isSameDay, startOfDay, addDays, addMonths, addYears, addWeeks } from "date-fns";
 import { useState, useMemo } from "react";
+import {
+  getRecurringExpensesAsSchedules,
+  isValidScheduleDate,
+} from "../scheduleBudgetRecurrence";
 
 interface BalanceTimelineProps {
   currentWealth: number;
@@ -27,56 +31,20 @@ interface BalancePoint {
 }
 
 type Interval = "day" | "week" | "month" | "year";
+type YAxisDomain = [number, number] | [number, 'auto'];
 
 export function BalanceTimeline({ currentWealth, schedules, recurringExpenses }: BalanceTimelineProps) {
   const [selectedDate, setSelectedDate] = useState<Date>();
   const [interval, setInterval] = useState<Interval>("day");
   const [pointCount, setPointCount] = useState<number>(10);
   const [startDate, setStartDate] = useState<Date>(new Date());
+  const normalizedPointCount = Math.min(
+    1000,
+    Math.max(1, Number.isFinite(pointCount) ? Math.floor(pointCount) : 1),
+  );
 
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat('ko-KR').format(amount);
-  };
-
-  // Convert fixed expenses to one-time expenses for a specific period
-  const getRecurringExpensesAsSchedules = (endDate: Date): Schedule[] => {
-    const result: Schedule[] = [];
-    const today = startOfDay(new Date());
-
-    recurringExpenses.forEach((expense) => {
-      let currentDate = startOfDay(expense.startDate);
-      const finalDate = expense.endDate ? startOfDay(expense.endDate) : endDate;
-      
-      while (currentDate <= finalDate && currentDate <= endDate) {
-        if (currentDate >= today) {
-          result.push({
-            id: `recurring-${expense.id}-${currentDate.getTime()}`,
-            title: expense.title,
-            date: currentDate,
-            requiredAmount: expense.amount,
-            isIncome: expense.isIncome,
-          });
-        }
-
-        // Calculate next date
-        switch (expense.frequency) {
-          case "daily":
-            currentDate = addDays(currentDate, 1);
-            break;
-          case "weekly":
-            currentDate = addDays(currentDate, 7);
-            break;
-          case "monthly":
-            currentDate = addMonths(currentDate, 1);
-            break;
-          case "yearly":
-            currentDate = addYears(currentDate, 1);
-            break;
-        }
-      }
-    });
-
-    return result;
   };
 
   // Calculate end date by interval and point count
@@ -98,8 +66,11 @@ export function BalanceTimeline({ currentWealth, schedules, recurringExpenses }:
 
   // Calculate balance changes
   const balancePoints = useMemo(() => {
-    const endDate = getEndDate(interval, pointCount);
-    const allSchedules = [...schedules, ...getRecurringExpensesAsSchedules(endDate)];
+    const endDate = getEndDate(interval, normalizedPointCount);
+    const allSchedules = [
+      ...schedules.filter((schedule) => isValidScheduleDate(schedule.date)),
+      ...getRecurringExpensesAsSchedules(recurringExpenses, endDate),
+    ];
 
     if (allSchedules.length === 0) return [];
 
@@ -150,7 +121,7 @@ export function BalanceTimeline({ currentWealth, schedules, recurringExpenses }:
       });
 
     return points;
-  }, [currentWealth, schedules, recurringExpenses, interval, pointCount]);
+  }, [currentWealth, schedules, recurringExpenses, interval, normalizedPointCount]);
 
   // Chart data - sampling based on interval
   const chartData = useMemo(() => {
@@ -169,7 +140,7 @@ export function BalanceTimeline({ currentWealth, schedules, recurringExpenses }:
     const sampledPoints: any[] = [];
     
     // From past to future (past pointCount + today + future pointCount)
-    for (let i = -pointCount; i <= pointCount; i++) {
+    for (let i = -normalizedPointCount; i <= normalizedPointCount; i++) {
       let targetDate: Date;
       
       switch (interval) {
@@ -209,11 +180,11 @@ export function BalanceTimeline({ currentWealth, schedules, recurringExpenses }:
     }
 
     return sampledPoints;
-  }, [balancePoints, interval, pointCount, currentWealth, startDate]);
+  }, [balancePoints, interval, normalizedPointCount, currentWealth, startDate]);
 
   // Calculate Y-axis range
   const yAxisDomain = useMemo(() => {
-    if (chartData.length === 0) return [0, 'auto'];
+    if (chartData.length === 0) return [0, 'auto'] as YAxisDomain;
     
     const balances = chartData.map(d => d.Balance);
     const minBalance = Math.min(...balances);
@@ -226,7 +197,7 @@ export function BalanceTimeline({ currentWealth, schedules, recurringExpenses }:
     return [
       Math.floor((minBalance - padding) / 10000) * 10000,
       Math.ceil((maxBalance + padding) / 10000) * 10000
-    ];
+    ] as YAxisDomain;
   }, [chartData]);
 
   // Calculate balance at selected date
@@ -234,8 +205,11 @@ export function BalanceTimeline({ currentWealth, schedules, recurringExpenses }:
     if (!date) return null;
 
     const targetDate = startOfDay(date);
-    const endDate = getEndDate(interval, pointCount);
-    const allSchedules = [...schedules, ...getRecurringExpensesAsSchedules(endDate)];
+    const endDate = getEndDate(interval, normalizedPointCount);
+    const allSchedules = [
+      ...schedules.filter((schedule) => isValidScheduleDate(schedule.date)),
+      ...getRecurringExpensesAsSchedules(recurringExpenses, endDate),
+    ];
     
     // Balance at 00:00 on that date (before expenses on that day)
     let balanceStart = currentWealth;
@@ -298,7 +272,7 @@ export function BalanceTimeline({ currentWealth, schedules, recurringExpenses }:
               min="1"
               max="1000"
               value={pointCount}
-              onChange={(e) => setPointCount(Math.max(1, parseInt(e.target.value) || 1))}
+              onChange={(e) => setPointCount(Math.min(1000, Math.max(1, parseInt(e.target.value) || 1)))}
               className="w-24 bg-[#2A2A2A] border-white/30 text-white"
             />
             <Tabs value={interval} onValueChange={(value) => setInterval(value as Interval)} className="flex-1">
@@ -336,7 +310,7 @@ export function BalanceTimeline({ currentWealth, schedules, recurringExpenses }:
                   }}
                 />
                 <Tooltip 
-                  formatter={(value: number) => [`₩${formatCurrency(value)}`, 'Balance']}
+                  formatter={(value?: number) => [`₩${formatCurrency(value ?? 0)}`, 'Balance']}
                   labelFormatter={(label, payload) => {
                     if (payload && payload.length > 0) {
                       return payload[0].payload.fullDate;
