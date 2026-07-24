@@ -10,6 +10,7 @@ import './App.css';
 import { initLanguage, getLanguage, setLanguage, t, type Language } from './i18n';
 import { applyTheme, themeNames, type Theme, getThemeColors } from './theme';
 import ScheduleAndBudget from './ScheduleAndBudget';
+import { calculateGraphLevels } from './graphLayout';
 
 interface Project {
   project_id: string;
@@ -5268,37 +5269,10 @@ function GraphView({
       y: circle.y ?? 0,
       radius: circle.radius ?? 55
     }));
-    const levelMap = new Map<string, number>();
-
-    // 들어오는 화살표가 없는 노드들을 루트로 설정 (레벨 0)
-    const hasIncoming = new Set(arrowsList.map(a => a.to));
-    const roots = circlesList.filter(c => !hasIncoming.has(c.id)).map(c => c.id);
-
-    // BFS로 레벨 계산
-    const queue: string[] = [];
-    roots.forEach(id => {
-      levelMap.set(id, 0);
-      queue.push(id);
-    });
-
-    while (queue.length > 0) {
-      const currentId = queue.shift()!;
-      const currentLevel = levelMap.get(currentId)!;
-
-      // 현재 노드에서 나가는 화살표들 찾기
-      const outgoing = arrowsList.filter(a => a.from === currentId);
-
-      outgoing.forEach(arrow => {
-        const targetId = arrow.to;
-        const existingLevel = levelMap.get(targetId);
-
-        // 더 깊은 레벨로 업데이트 (여러 경로가 있을 수 있음)
-        if (existingLevel === undefined || existingLevel < currentLevel + 1) {
-          levelMap.set(targetId, currentLevel + 1);
-          queue.push(targetId);
-        }
-      });
-    }
+    const levelMap = calculateGraphLevels(
+      circlesList.map(circle => circle.id),
+      arrowsList,
+    );
 
     // 결과에 레벨 적용
     result.forEach(circle => {
