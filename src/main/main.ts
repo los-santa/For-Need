@@ -11,7 +11,7 @@
 import path from 'path';
 import { app, BrowserWindow, ipcMain } from 'electron';
 import log from 'electron-log';
-import db from './initdb';
+import db, { activeDatabasePath } from './initdb';
 import {
   HabitExpansionInput,
   HabitProperties,
@@ -2229,7 +2229,8 @@ ipcMain.handle('delete-local-database', async (event, dbPath: string) => {
   try {
     return deleteLocalDatabaseFile(dbPath, {
       localDbDir: path.join(app.getPath('userData'), 'local-databases'),
-      activeDbPath: getDatabasePath(),
+      // Protect the currently open connection path, not just the settings value.
+      activeDbPath: activeDatabasePath,
     });
   } catch (error) {
     log.error('Failed to delete local database:', error);

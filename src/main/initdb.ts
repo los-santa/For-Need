@@ -396,4 +396,6 @@ try {
   console.log('Habit cardtype creation error:', error);
 }
 
+export const activeDatabasePath = dbPath;
+
 export default db;

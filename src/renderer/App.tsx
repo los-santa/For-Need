@@ -615,13 +615,11 @@ function DatabaseSettings() {
           setMessage(changeResult.message);
           setDbSettings((prev: any) => ({ ...prev, dbPath: result.path }));
 
-          // 재시작 확인 다이얼로그
+          // 싱글톤 DB 연결은 재시작 전에 바뀌지 않으므로, 경로 변경 후 즉시 재시작해
+          // 설정/UI와 실제 쓰기 대상 DB가 어긋나지 않게 한다.
           if (changeResult.requiresRestart) {
-            setTimeout(() => {
-              if (window.confirm('변경사항을 적용하려면 앱을 재시작해야 합니다. 지금 재시작하시겠습니까?')) {
-                window.electron.ipcRenderer.invoke('restart-app');
-              }
-            }, 1000);
+            window.alert('DB 경로가 변경되었습니다. 변경사항을 적용하기 위해 앱을 재시작합니다.');
+            await window.electron.ipcRenderer.invoke('restart-app');
           }
         } else {
           setMessage('DB 경로 변경에 실패했습니다: ' + changeResult.error);
@@ -649,10 +647,8 @@ function DatabaseSettings() {
         loadRecentDbPaths();
 
         if (result.requiresRestart) {
-          const shouldRestart = window.confirm('변경사항을 적용하려면 앱을 재시작해야 합니다. 지금 재시작하시겠습니까?');
-          if (shouldRestart) {
-            await window.electron.ipcRenderer.invoke('restart-app');
-          }
+          window.alert('DB 경로가 변경되었습니다. 변경사항을 적용하기 위해 앱을 재시작합니다.');
+          await window.electron.ipcRenderer.invoke('restart-app');
         }
       } else {
         setMessage(`DB 경로 변경 실패: ${result.error}`);
@@ -693,10 +689,8 @@ function DatabaseSettings() {
           loadLocalDatabases();
 
           if (changeResult.requiresRestart) {
-            const shouldRestart = window.confirm('변경사항을 적용하려면 앱을 재시작해야 합니다. 지금 재시작하시겠습니까?');
-            if (shouldRestart) {
-              await window.electron.ipcRenderer.invoke('restart-app');
-            }
+            window.alert('새 DB 파일이 생성되었습니다. 변경사항을 적용하기 위해 앱을 재시작합니다.');
+            await window.electron.ipcRenderer.invoke('restart-app');
           }
         } else {
           setMessage(`새 DB 생성 실패: ${changeResult.error}`);
@@ -724,10 +718,8 @@ function DatabaseSettings() {
         loadRecentDbPaths();
 
         if (result.requiresRestart) {
-          const shouldRestart = window.confirm('변경사항을 적용하려면 앱을 재시작해야 합니다. 지금 재시작하시겠습니까?');
-          if (shouldRestart) {
-            await window.electron.ipcRenderer.invoke('restart-app');
-          }
+          window.alert('DB가 변경되었습니다. 변경사항을 적용하기 위해 앱을 재시작합니다.');
+          await window.electron.ipcRenderer.invoke('restart-app');
         }
       } else {
         setMessage(`DB 변경 실패: ${result.error}`);
