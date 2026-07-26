@@ -10,6 +10,7 @@ import './App.css';
 import { initLanguage, getLanguage, setLanguage, t, type Language } from './i18n';
 import { applyTheme, themeNames, type Theme, getThemeColors } from './theme';
 import ScheduleAndBudget from './ScheduleAndBudget';
+import { calculateGraphLevels } from './graphLayout';
 
 interface Project {
   project_id: string;
@@ -614,13 +615,11 @@ function DatabaseSettings() {
           setMessage(changeResult.message);
           setDbSettings((prev: any) => ({ ...prev, dbPath: result.path }));
 
-          // 재시작 확인 다이얼로그
+          // 싱글톤 DB 연결은 재시작 전에 바뀌지 않으므로, 경로 변경 후 즉시 재시작해
+          // 설정/UI와 실제 쓰기 대상 DB가 어긋나지 않게 한다.
           if (changeResult.requiresRestart) {
-            setTimeout(() => {
-              if (window.confirm('변경사항을 적용하려면 앱을 재시작해야 합니다. 지금 재시작하시겠습니까?')) {
-                window.electron.ipcRenderer.invoke('restart-app');
-              }
-            }, 1000);
+            window.alert('DB 경로가 변경되었습니다. 변경사항을 적용하기 위해 앱을 재시작합니다.');
+            await window.electron.ipcRenderer.invoke('restart-app');
           }
         } else {
           setMessage('DB 경로 변경에 실패했습니다: ' + changeResult.error);
@@ -648,10 +647,8 @@ function DatabaseSettings() {
         loadRecentDbPaths();
 
         if (result.requiresRestart) {
-          const shouldRestart = window.confirm('변경사항을 적용하려면 앱을 재시작해야 합니다. 지금 재시작하시겠습니까?');
-          if (shouldRestart) {
-            await window.electron.ipcRenderer.invoke('restart-app');
-          }
+          window.alert('DB 경로가 변경되었습니다. 변경사항을 적용하기 위해 앱을 재시작합니다.');
+          await window.electron.ipcRenderer.invoke('restart-app');
         }
       } else {
         setMessage(`DB 경로 변경 실패: ${result.error}`);
@@ -692,10 +689,8 @@ function DatabaseSettings() {
           loadLocalDatabases();
 
           if (changeResult.requiresRestart) {
-            const shouldRestart = window.confirm('변경사항을 적용하려면 앱을 재시작해야 합니다. 지금 재시작하시겠습니까?');
-            if (shouldRestart) {
-              await window.electron.ipcRenderer.invoke('restart-app');
-            }
+            window.alert('새 DB 파일이 생성되었습니다. 변경사항을 적용하기 위해 앱을 재시작합니다.');
+            await window.electron.ipcRenderer.invoke('restart-app');
           }
         } else {
           setMessage(`새 DB 생성 실패: ${changeResult.error}`);
@@ -723,10 +718,8 @@ function DatabaseSettings() {
         loadRecentDbPaths();
 
         if (result.requiresRestart) {
-          const shouldRestart = window.confirm('변경사항을 적용하려면 앱을 재시작해야 합니다. 지금 재시작하시겠습니까?');
-          if (shouldRestart) {
-            await window.electron.ipcRenderer.invoke('restart-app');
-          }
+          window.alert('DB가 변경되었습니다. 변경사항을 적용하기 위해 앱을 재시작합니다.');
+          await window.electron.ipcRenderer.invoke('restart-app');
         }
       } else {
         setMessage(`DB 변경 실패: ${result.error}`);
@@ -5065,6 +5058,7 @@ function GraphView({
     radius: number;
       color: string;
     name: string;
+    content?: string;
     value: number;
     rank: number;
     level: number;
@@ -5268,37 +5262,10 @@ function GraphView({
       y: circle.y ?? 0,
       radius: circle.radius ?? 55
     }));
-    const levelMap = new Map<string, number>();
-
-    // 들어오는 화살표가 없는 노드들을 루트로 설정 (레벨 0)
-    const hasIncoming = new Set(arrowsList.map(a => a.to));
-    const roots = circlesList.filter(c => !hasIncoming.has(c.id)).map(c => c.id);
-
-    // BFS로 레벨 계산
-    const queue: string[] = [];
-    roots.forEach(id => {
-      levelMap.set(id, 0);
-      queue.push(id);
-    });
-
-    while (queue.length > 0) {
-      const currentId = queue.shift()!;
-      const currentLevel = levelMap.get(currentId)!;
-
-      // 현재 노드에서 나가는 화살표들 찾기
-      const outgoing = arrowsList.filter(a => a.from === currentId);
-
-      outgoing.forEach(arrow => {
-        const targetId = arrow.to;
-        const existingLevel = levelMap.get(targetId);
-
-        // 더 깊은 레벨로 업데이트 (여러 경로가 있을 수 있음)
-        if (existingLevel === undefined || existingLevel < currentLevel + 1) {
-          levelMap.set(targetId, currentLevel + 1);
-          queue.push(targetId);
-        }
-      });
-    }
+    const levelMap = calculateGraphLevels(
+      circlesList.map(circle => circle.id),
+      arrowsList,
+    );
 
     // 결과에 레벨 적용
     result.forEach(circle => {
@@ -5376,6 +5343,7 @@ function GraphView({
           radius: 55,
           color: existingCircle?.color || COLORS[index % COLORS.length],
           name: card.title || '',
+          content: card.content || '',
           value: 0,
           rank: 1,
           level: 0,
@@ -6442,11 +6410,19 @@ function GraphView({
                   <input
                     value={selectedCircle.name}
                     onChange={(e) => {
-                      setCircles(circles.map(c =>
+                      const nextName = e.target.value;
+                      setCircles(prevCircles => prevCircles.map(c =>
                         c.id === focusedCircleId
-                          ? { ...c, name: e.target.value }
+                          ? { ...c, name: nextName }
                           : c
                       ));
+                    }}
+                    onBlur={async (e) => {
+                      if (!focusedCircleId || !onUpdateCard) return;
+                      const nextName = e.target.value;
+                      const sourceCard = cards.find(card => card.id === focusedCircleId);
+                      if ((sourceCard?.title || '') === nextName) return;
+                      await onUpdateCard(focusedCircleId, 'title', nextName);
                     }}
                     placeholder="ENTER NAME..."
                     style={{
@@ -6477,11 +6453,19 @@ function GraphView({
                   <textarea
                     value={selectedCircle.content || ''}
                     onChange={(e) => {
-                      setCircles(circles.map(c =>
+                      const nextContent = e.target.value;
+                      setCircles(prevCircles => prevCircles.map(c =>
                         c.id === focusedCircleId
-                          ? { ...c, content: e.target.value }
+                          ? { ...c, content: nextContent }
                           : c
                       ));
+                    }}
+                    onBlur={async (e) => {
+                      if (!focusedCircleId || !onUpdateCard) return;
+                      const nextContent = e.target.value;
+                      const sourceCard = cards.find(card => card.id === focusedCircleId);
+                      if ((sourceCard?.content || '') === nextContent) return;
+                      await onUpdateCard(focusedCircleId, 'content', nextContent);
                     }}
                     placeholder="ENTER CONTENT..."
                     style={{
