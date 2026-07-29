@@ -29,6 +29,13 @@ import {
 import { v4 as uuidv4 } from 'uuid';
 import { randomUUID } from 'crypto';
 import { resolveHtmlPath } from './util';
+import {
+  ACTIVE_RELATION_EXISTS_SQL,
+  DELETED_RELATION_LOOKUP_SQL,
+  ensureActiveRelation,
+  INSERT_RELATION_SQL,
+  RESTORE_RELATION_SQL,
+} from './ensureRelation';
 
 // 세션 관리
 let currentSessionId = uuidv4();
@@ -263,15 +270,33 @@ ipcMain.handle('create-relation', async (_, data: RelationInput) => {
   try {
     const now = new Date().toISOString();
 
-    const insert = db.prepare(`INSERT INTO RELATION (relationtype_id, source, target, project_id, createdat) VALUES (?, ?, ?, ?, ?)`);
+    const insert = db.prepare(INSERT_RELATION_SQL);
+    const activeExistsStmt = db.prepare(ACTIVE_RELATION_EXISTS_SQL);
+    const deletedRelationStmt = db.prepare(DELETED_RELATION_LOOKUP_SQL);
+    const restoreRelationStmt = db.prepare(RESTORE_RELATION_SQL);
 
-    // 중복 여부 확인 함수
-    const existsStmt = db.prepare(`SELECT 1 FROM RELATION WHERE relationtype_id = ? AND source = ? AND target = ?`);
+    const ensureRelation = (
+      relationtypeId: number,
+      source: string,
+      target: string,
+    ) => {
+      ensureActiveRelation(
+        {
+          findActive: activeExistsStmt,
+          findDeleted: deletedRelationStmt,
+          restore: restoreRelationStmt,
+          insert,
+        },
+        relationtypeId,
+        source,
+        target,
+        data.project_id ?? '',
+        now,
+      );
+    };
 
     const transact = db.transaction(() => {
-      if (!existsStmt.get(data.relationtype_id, data.source, data.target)) {
-        insert.run(data.relationtype_id, data.source, data.target, data.project_id ?? '', now);
-      }
+      ensureRelation(data.relationtype_id, data.source, data.target);
 
       // 반대 relationtype_id 찾기
       const rtRow = db.prepare('SELECT oppsite FROM RELATIONTYPE WHERE relationtype_id = ?').get(data.relationtype_id) as any;
@@ -280,9 +305,7 @@ ipcMain.handle('create-relation', async (_, data: RelationInput) => {
         const oppRow = db.prepare('SELECT relationtype_id FROM RELATIONTYPE WHERE typename = ?').get(oppName) as any;
         if (oppRow) {
           const oppId = oppRow.relationtype_id;
-          if (!existsStmt.get(oppId, data.target, data.source)) {
-            insert.run(oppId, data.target, data.source, data.project_id ?? '', now);
-          }
+          ensureRelation(oppId, data.target, data.source);
         }
       }
     });
@@ -444,6 +467,9 @@ ipcMain.handle('get-relations-by-source', async (_, sourceId: string) => {
       LEFT JOIN RELATIONTYPE rt ON rt.relationtype_id = r.relationtype_id
       LEFT JOIN CARDS c ON c.id = r.target
       WHERE r.source = ?
+        AND r.deleted_at IS NULL
+        AND rt.deleted_at IS NULL
+        AND c.deleted_at IS NULL
     `);
 
     const rows = stmt.all(sourceId) as RelationRow[];
